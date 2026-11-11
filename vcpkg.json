@@ -1,0 +1,26 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "aplomb",
+  "version-semver": "0.1.0",
+  "description": "An engine-independent active ragdoll library built on Jolt Physics",
+  "homepage": "https://github.com/takumu-dev/aplomb",
+  "license": "MIT",
+  "builtin-baseline": "bf19794383e8fb95eba5aa553235bc8ec2271688",
+  "dependencies": [
+    {
+      "name": "joltphysics",
+      "version>=": "5.6.0"
+    }
+  ],
+  "features": {
+    "tests": {
+      "description": "What the library's tests need, and nothing a host ships",
+      "dependencies": [
+        {
+          "name": "catch2",
+          "version>=": "3.0.1"
+        }
+      ]
+    }
+  }
+}
