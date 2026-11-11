@@ -61,8 +61,22 @@
       }
     },
     {
+      "name": "sanitized",
+      "hidden": true,
+      "cacheVariables": {
+        "APLOMB_SANITIZERS": "address;undefined"
+      }
+    },
+    {
+      "name": "no-exceptions",
+      "hidden": true,
+      "cacheVariables": {
+        "APLOMB_EXCEPTIONS": false
+      }
+    },
+    {
       "name": "linux-gcc-debug",
-      "inherits": ["gcc", "debug"],
+      "inherits": ["gcc", "debug", "sanitized"],
       "displayName": "Linux, GCC, debug"
     },
     {
@@ -72,20 +86,30 @@
     },
     {
       "name": "linux-clang-debug",
-      "inherits": ["clang", "debug"],
+      "inherits": ["clang", "debug", "sanitized"],
       "displayName": "Linux, Clang, debug"
     },
     {
       "name": "linux-clang-release",
-      "inherits": ["clang", "release"],
+      "inherits": ["clang", "release", "no-exceptions"],
       "displayName": "Linux, Clang, release"
+    },
+    {
+      "name": "lint",
+      "inherits": ["clang", "debug", "sanitized"],
+      "displayName": "Linux, Clang, every source through clang-tidy",
+      "cacheVariables": {
+        "CMAKE_CXX_CLANG_TIDY": "clang-tidy"
+      }
     }
   ],
   "buildPresets": [
     { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
     { "name": "linux-gcc-release", "configurePreset": "linux-gcc-release" },
     { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" },
-    { "name": "linux-clang-release", "configurePreset": "linux-clang-release" }
+    { "name": "linux-clang-release", "configurePreset": "linux-clang-release" },
+    { "name": "lint", "configurePreset": "lint" },
+    { "name": "lint-format", "configurePreset": "lint", "targets": ["check-format"] }
   ],
   "testPresets": [
     {
@@ -136,6 +160,14 @@
         { "type": "configure", "name": "linux-clang-release" },
         { "type": "build", "name": "linux-clang-release" },
         { "type": "test", "name": "linux-clang-release" }
+      ]
+    },
+    {
+      "name": "lint",
+      "steps": [
+        { "type": "configure", "name": "lint" },
+        { "type": "build", "name": "lint" },
+        { "type": "build", "name": "lint-format" }
       ]
     }
   ]

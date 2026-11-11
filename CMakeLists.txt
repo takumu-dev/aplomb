@@ -26,6 +26,13 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # A host that adds aplomb as a subproject gets the library alone.
 option(APLOMB_BUILD_TESTS "Build aplomb's tests." ${PROJECT_IS_TOP_LEVEL})
+# Many hosts build without exceptions, and the library must build that way too. The tests keep
+# exceptions either way, since Catch2 needs them.
+option(APLOMB_EXCEPTIONS "Build the library with exceptions enabled." ON)
+set(APLOMB_SANITIZERS "" CACHE STRING
+    "The sanitizers to build everything with, as a list such as \"address;undefined\"."
+)
+aplomb_enable_sanitizers("${APLOMB_SANITIZERS}")
 
 add_subdirectory(src/core)
 

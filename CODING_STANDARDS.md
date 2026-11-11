@@ -16,6 +16,11 @@ departs from them, it says so.
   with a workflow preset, so that a developer and CI build alike: `cmake --workflow --preset
   linux-gcc-debug` configures, builds and runs the tests. The presets find vcpkg through
   `VCPKG_ROOT`.
+- The debug presets build everything with AddressSanitizer and UndefinedBehaviorSanitizer, and
+  `linux-clang-release` builds the library with exceptions disabled (`APLOMB_EXCEPTIONS` off).
+- CI runs on CircleCI, from `.circleci/`. Its Linux jobs run in an image built from
+  `.circleci/image/`, which holds the floor compilers: `linux-gcc-debug`, `linux-clang-release`,
+  `linux-arm64-release` (the same preset on ARM64) and `lint`. Together they are the `ci` check.
 - The build only finds its dependencies with `find_package`, and never downloads anything, so a host
   can supply them through any package manager or none. aplomb's own builds take them from the vcpkg
   manifest, with test-only ports in its `tests` feature.
@@ -149,7 +154,8 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
 - A failed check is logged as an error, then handed to the assertion handler, which aborts unless a
   host has replaced it. Every other diagnostic aplomb doesn't return goes to the log sink. The
   handler and the sink are process-wide hooks, set once at start-up.
-- No `throw`, `try` or `catch`, in the library or in its tests, since many hosts build with
+- No `throw`, `try` or `catch`, in the library or in its tests (bar the one test that a throw fails
+  to compile without exceptions), since many hosts build with
   exceptions disabled. The library must build that way too, and stays exception-neutral: RAII
   throughout, so that an exception from the standard library or from host code that aplomb calls
   unwinds cleanly. A standard-library failure such as
@@ -180,8 +186,10 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
   `aplomb_target_conventions`, and a test target with `aplomb_target_warnings`. The settings are
   private to each target, so none of them reaches a host's build. Third-party headers come in as
   system includes.
-- The code passes clang-tidy with the groups in `.clang-tidy`, every warning an error. A finding that has to
-  stand is suppressed with `NOLINT(<check>): <reason>` or `NOLINTNEXTLINE(<check>): <reason>`,
+- The code passes clang-tidy with the groups in `.clang-tidy`, every warning an error. The `lint`
+  workflow preset builds every source through clang-tidy, with the sanitizers on so that their
+  tests are built and checked too, then checks the formatting. A finding that has to stand is
+  suppressed with `NOLINT(<check>): <reason>` or `NOLINTNEXTLINE(<check>): <reason>`,
   never a bare `NOLINT`. Keep the reason on that line: `NOLINTNEXTLINE` covers only the line after
   its own, and any longer explanation goes in a comment above it. Jolt's interfaces are named in
   its own style, so overrides of its virtual functions keep Jolt's names.
@@ -200,7 +208,8 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
 - A test exercises a public interface only, and survives any refactoring that keeps the behaviour.
   Its name is a sentence saying what holds, such as "a world steps at the step rate it is given". A
   test case's name must not begin with `-`, which Catch2 would read as one of its options.
-- `tests/` mirrors `src/`, and `tests/support/` holds what the tests share: Jolt's process-wide
+- `tests/` mirrors `src/`, `tests/build/` holds tests of the build itself, named `build:`, and
+  `tests/support/` holds what the tests share: Jolt's process-wide
   setup as a host does it, the job system and temporary allocator a host lends a world, with a fixed
   number of threads, and a log sink that records what it receives. No test opens a window.
 - Each test's name begins with the target it tests, matching its Catch2 tag (`[core]`). Each kind of
@@ -213,6 +222,8 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
     to fail. It fails through a replaced handler rather than aborting, since CTest counts an abort
     as a crash even then, and only when the check that fails has the message the test names, so
     that no other check passes it. These are used sparingly.
+  - `aplomb_add_compile_failure_test` adds a source built with the library's settings that must
+    fail to compile, and for the reason the test names.
 - The core's tests build their rigs and scenes in C++, and never read a file.
 
 ## Commits and branches
