@@ -1,0 +1,30 @@
+# The setup workflow. It names the CI image after the git tree hash of .circleci/image, which no
+# static configuration can do, and continues the pipeline with ci.yml, passing it that name.
+version: 2.1
+
+setup: true
+
+orbs:
+  continuation: circleci/continuation@2.0.1
+
+jobs:
+  setup:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - checkout
+      - run:
+          name: Name the CI image
+          command: |
+            image="ghcr.io/takumu-dev/aplomb-ci:$(git rev-parse HEAD:.circleci/image)"
+            jq -n --arg image "${image}" '{"ci-image": $image}' > /tmp/parameters.json
+            cat /tmp/parameters.json
+      - continuation/continue:
+          configuration_path: .circleci/ci.yml
+          parameters: /tmp/parameters.json
+
+workflows:
+  setup:
+    jobs:
+      - setup
