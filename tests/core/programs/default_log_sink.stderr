@@ -1,0 +1,5 @@
+trace: first
+debug: second
+info: third
+warning: fourth
+error: fifth

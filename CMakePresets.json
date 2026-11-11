@@ -1,0 +1,142 @@
+{
+  "$schema": "https://raw.githubusercontent.com/Kitware/CMake/master/Help/manual/presets/schema.json",
+  "version": 12,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 4,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "$comment": "Every preset builds with Ninja and takes its dependencies from vcpkg, found through VCPKG_ROOT.",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "CMAKE_COMPILE_WARNING_AS_ERROR": true,
+        "CMAKE_EXPORT_COMPILE_COMMANDS": true,
+        "VCPKG_MANIFEST_FEATURES": "tests"
+      }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "inherits": "base",
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      }
+    },
+    {
+      "name": "gcc",
+      "hidden": true,
+      "inherits": "linux",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "g++"
+      }
+    },
+    {
+      "name": "clang",
+      "hidden": true,
+      "inherits": "linux",
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++"
+      }
+    },
+    {
+      "name": "debug",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "release",
+      "hidden": true,
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "linux-gcc-debug",
+      "inherits": ["gcc", "debug"],
+      "displayName": "Linux, GCC, debug"
+    },
+    {
+      "name": "linux-gcc-release",
+      "inherits": ["gcc", "release"],
+      "displayName": "Linux, GCC, release"
+    },
+    {
+      "name": "linux-clang-debug",
+      "inherits": ["clang", "debug"],
+      "displayName": "Linux, Clang, debug"
+    },
+    {
+      "name": "linux-clang-release",
+      "inherits": ["clang", "release"],
+      "displayName": "Linux, Clang, release"
+    }
+  ],
+  "buildPresets": [
+    { "name": "linux-gcc-debug", "configurePreset": "linux-gcc-debug" },
+    { "name": "linux-gcc-release", "configurePreset": "linux-gcc-release" },
+    { "name": "linux-clang-debug", "configurePreset": "linux-clang-debug" },
+    { "name": "linux-clang-release", "configurePreset": "linux-clang-release" }
+  ],
+  "testPresets": [
+    {
+      "name": "test",
+      "hidden": true,
+      "output": {
+        "outputOnFailure": true,
+        "outputJUnitFile": "junit.xml"
+      },
+      "execution": {
+        "jobs": "",
+        "noTestsAction": "error"
+      }
+    },
+    { "name": "linux-gcc-debug", "inherits": "test", "configurePreset": "linux-gcc-debug" },
+    { "name": "linux-gcc-release", "inherits": "test", "configurePreset": "linux-gcc-release" },
+    { "name": "linux-clang-debug", "inherits": "test", "configurePreset": "linux-clang-debug" },
+    { "name": "linux-clang-release", "inherits": "test", "configurePreset": "linux-clang-release" }
+  ],
+  "workflowPresets": [
+    {
+      "name": "linux-gcc-debug",
+      "steps": [
+        { "type": "configure", "name": "linux-gcc-debug" },
+        { "type": "build", "name": "linux-gcc-debug" },
+        { "type": "test", "name": "linux-gcc-debug" }
+      ]
+    },
+    {
+      "name": "linux-gcc-release",
+      "steps": [
+        { "type": "configure", "name": "linux-gcc-release" },
+        { "type": "build", "name": "linux-gcc-release" },
+        { "type": "test", "name": "linux-gcc-release" }
+      ]
+    },
+    {
+      "name": "linux-clang-debug",
+      "steps": [
+        { "type": "configure", "name": "linux-clang-debug" },
+        { "type": "build", "name": "linux-clang-debug" },
+        { "type": "test", "name": "linux-clang-debug" }
+      ]
+    },
+    {
+      "name": "linux-clang-release",
+      "steps": [
+        { "type": "configure", "name": "linux-clang-release" },
+        { "type": "build", "name": "linux-clang-release" },
+        { "type": "test", "name": "linux-clang-release" }
+      ]
+    }
+  ]
+}
