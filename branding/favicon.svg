@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16" role="img" aria-labelledby="title" shape-rendering="crispEdges">
+<title id="title">aplomb</title>
+<style>.ink{fill:#16181D}@media (prefers-color-scheme: dark){.ink{fill:#F2F3F0}}</style>
+<path class="ink" d="M7 0h2v1h-2zM6 1h4v1h-4zM6 2h4v1h-4zM7 3h2v1h-2zM4 5h2v1h-2zM7 5h2v1h-2zM10 5h2v1h-2zM2 6h2v1h-2zM7 6h2v1h-2zM12 6h2v1h-2zM0 7h2v1h-2zM7 7h2v1h-2zM14 7h2v1h-2zM7 8h2v1h-2zM7 10h2v1h-2zM10 10h2v1h-2zM7 11h2v1h-2zM11 11h2v1h-2zM7 12h2v1h-2zM12 12h2v1h-2zM7 13h2v1h-2zM11 13h2v1h-2zM7 14h2v1h-2zM10 14h2v1h-2z"/>
+<path fill="#D63B30" d="M5 15h6v1h-6z"/>
+</svg>

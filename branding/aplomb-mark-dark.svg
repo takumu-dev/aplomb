@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-labelledby="title">
+<title id="title">aplomb</title>
+<circle cx="32" cy="8.5" r="5" fill="#F2F3F0"/>
+<path d="M32 18V30M26 19L18 22M11.5 24L5 26M38 19L46 22M52.5 24L59 26M32 36V44.5M32 51V57.5M39 37L45 42.5M43.5 49L38 48" fill="none" stroke="#F2F3F0" stroke-width="5" stroke-linecap="round"/>
+<path d="M26 61.5H38" stroke="#D63B30" stroke-width="3" stroke-linecap="round"/>
+</svg>
