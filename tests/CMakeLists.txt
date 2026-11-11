@@ -32,6 +32,7 @@ function(aplomb_add_test_program out_target name source)
     cmake_path(GET source STEM stem)
     set(target aplomb_${name}_${stem})
     add_executable(${target} ${source})
+    target_compile_features(${target} PRIVATE cxx_std_23)
     target_link_libraries(${target} PRIVATE ${ARGN})
     aplomb_target_warnings(${target})
     set(${out_target} ${target} PARENT_SCOPE)
@@ -89,4 +90,25 @@ function(aplomb_add_precondition_test name description)
     set_tests_properties("${name}: ${description}" PROPERTIES WILL_FAIL TRUE)
 endfunction()
 
+# Adds a test that a source built with the library's settings fails to compile, and fails for the
+# reason the test names, so that no other error passes it. The source is built only by the test.
+#
+#   SOURCE   the source that must not compile
+#   MATCHES  a regular expression the compiler's output must match
+function(aplomb_add_compile_failure_test name description)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SOURCE;MATCHES" "")
+    cmake_path(GET arg_SOURCE STEM stem)
+    set(target aplomb_${name}_${stem})
+    add_library(${target} OBJECT EXCLUDE_FROM_ALL ${arg_SOURCE})
+    target_compile_features(${target} PRIVATE cxx_std_23)
+    aplomb_target_conventions(${target})
+    add_test(NAME "${name}: ${description}"
+        COMMAND "${CMAKE_COMMAND}" --build "${PROJECT_BINARY_DIR}" --target ${target}
+    )
+    set_tests_properties("${name}: ${description}" PROPERTIES
+        PASS_REGULAR_EXPRESSION "${arg_MATCHES}"
+    )
+endfunction()
+
 add_subdirectory(core)
+add_subdirectory(build)

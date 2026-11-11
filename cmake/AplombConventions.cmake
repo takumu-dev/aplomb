@@ -1,7 +1,7 @@
 # The compiler settings every target of the library and the tests builds with.
 #
-# Everything here is PRIVATE to the target, so none of it reaches a host's build through the
-# library's interface. Warnings become errors only through CMAKE_COMPILE_WARNING_AS_ERROR, which
+# The settings of a target are PRIVATE to it, and the sanitizers apply only to aplomb's own
+# directories, so none of it reaches a host's build through the library's interface. Warnings become errors only through CMAKE_COMPILE_WARNING_AS_ERROR, which
 # the project's own presets set; a host building aplomb as a subproject keeps its own choice.
 
 include_guard(GLOBAL)
@@ -56,12 +56,39 @@ endfunction()
 # Applies the settings of the library's own code: the strict warnings, and floating point that
 # gives the same results with every compiler, as Jolt's deterministic build does. Floating-point
 # operations are never fused into multiply-adds, which some targets round differently, and never
-# reordered by fast math. The tests use only the warnings.
+# reordered by fast math. With APLOMB_EXCEPTIONS off, exceptions are disabled too, so that a stray
+# throw or try fails to compile. The tests use only the warnings.
 function(aplomb_target_conventions target)
     aplomb_target_warnings(${target})
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         target_compile_options(${target} PRIVATE /fp:precise)
+        if(NOT APLOMB_EXCEPTIONS)
+            message(FATAL_ERROR "APLOMB_EXCEPTIONS can be turned off with GCC and Clang alone.")
+        endif()
     else()
         target_compile_options(${target} PRIVATE -ffp-contract=off -fno-fast-math)
+        if(NOT APLOMB_EXCEPTIONS)
+            target_compile_options(${target} PRIVATE -fno-exceptions)
+        endif()
+    endif()
+endfunction()
+
+# Builds everything in the calling directory and below with the given sanitizers, such as
+# "address;undefined", compiling and linking alike. Any finding ends the program, so that a test
+# that meets one fails.
+function(aplomb_enable_sanitizers sanitizers)
+    if(NOT sanitizers)
+        return()
+    endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        message(FATAL_ERROR "APLOMB_SANITIZERS can be set with GCC and Clang alone.")
+    endif()
+    list(JOIN sanitizers "," joined)
+    add_compile_options(-fsanitize=${joined} -fno-sanitize-recover=all -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=${joined})
+    if("undefined" IN_LIST sanitizers)
+        # The check of dynamic types needs the type information of every polymorphic class, and
+        # Jolt is built without it.
+        add_compile_options(-fno-sanitize=vptr)
     endif()
 endfunction()

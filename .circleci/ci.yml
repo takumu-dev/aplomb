@@ -1,0 +1,217 @@
+# The pipeline itself, continued from config.yml with the name of the CI image.
+#
+# The Linux jobs run in that image, built from .circleci/image for x86-64 and ARM64 the first time a
+# pipeline asks for it, and pulled from GHCR every time after. Each of them runs one workflow preset,
+# just as a developer does. The `ci` job passes when every Linux job and lint pass, and is the check
+# a pull request into develop must pass.
+#
+# Building the image needs the `ghcr` context, holding GHCR_TOKEN, a token of takumu-dev's allowed
+# to write packages. Once it exists, the image is public, so a pull request from a fork, which gets
+# no context, still runs.
+version: 2.1
+
+parameters:
+  # The CI image's full name, tag included.
+  ci-image:
+    type: string
+    default: ""
+
+executors:
+  linux:
+    parameters:
+      resource_class:
+        type: string
+        default: large
+    docker:
+      - image: << pipeline.parameters.ci-image >>
+    resource_class: << parameters.resource_class >>
+  image-builder:
+    parameters:
+      resource_class:
+        type: string
+    machine:
+      image: ubuntu-2404:current
+    resource_class: << parameters.resource_class >>
+
+commands:
+  login-to-ghcr:
+    steps:
+      - run:
+          name: Log in to GHCR
+          command: echo "${GHCR_TOKEN}" | docker login ghcr.io --username takumu-dev --password-stdin
+
+  # Before logging in, which a pull request from a fork can't do.
+  stop-if-image-exists:
+    parameters:
+      image:
+        type: string
+    steps:
+      - run:
+          name: Stop if the image exists
+          command: |
+            if docker manifest inspect "<< parameters.image >>" > /dev/null; then
+              circleci-agent step halt
+            fi
+
+jobs:
+  ci-image:
+    parameters:
+      arch:
+        type: enum
+        enum: [amd64, arm64]
+      resource_class:
+        type: string
+    executor:
+      name: image-builder
+      resource_class: << parameters.resource_class >>
+    steps:
+      - stop-if-image-exists:
+          image: << pipeline.parameters.ci-image >>-<< parameters.arch >>
+      - login-to-ghcr
+      - checkout
+      - run:
+          name: Build and push the image
+          command: |
+            image="<< pipeline.parameters.ci-image >>-<< parameters.arch >>"
+            docker build --tag "${image}" .circleci/image
+            docker push "${image}"
+
+  ci-image-manifest:
+    executor:
+      name: image-builder
+      resource_class: medium
+    steps:
+      - stop-if-image-exists:
+          image: << pipeline.parameters.ci-image >>
+      - login-to-ghcr
+      - run:
+          name: Join both architectures under one tag
+          command: |
+            image="<< pipeline.parameters.ci-image >>"
+            docker buildx imagetools create --tag "${image}" "${image}-amd64" "${image}-arm64"
+
+  workflow-preset:
+    parameters:
+      executor:
+        type: executor
+      preset:
+        type: string
+      tests:
+        type: boolean
+        default: true
+    executor: << parameters.executor >>
+    environment:
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_DIR: /root/.cache/ccache
+      CCACHE_MAXSIZE: 500M
+      VCPKG_DEFAULT_BINARY_CACHE: /root/.cache/vcpkg/archives
+    steps:
+      - checkout
+      - run:
+          name: Check vcpkg's registry out at the manifest's baseline
+          command: |
+            baseline="$(jq -r '."builtin-baseline"' vcpkg.json)"
+            git -C "${VCPKG_ROOT}" fetch --quiet origin "${baseline}"
+            git -C "${VCPKG_ROOT}" checkout --quiet --detach "${baseline}"
+      - run:
+          name: Key the dependency cache
+          command: |
+            # vcpkg's binary cache is keyed by each package's own hash, so an older cache is a safe
+            # start; a new key only keeps the cache from growing stale.
+            { cat vcpkg.json vcpkg-configuration.json; git rev-parse HEAD:ports; } > /tmp/vcpkg-key
+            mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
+      - restore_cache:
+          keys:
+            - vcpkg-v1-{{ arch }}-{{ checksum "/tmp/vcpkg-key" }}
+            - vcpkg-v1-{{ arch }}-
+      - restore_cache:
+          keys:
+            - ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-{{ .Revision }}
+            - ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-
+            - ccache-v1-<< parameters.preset >>-{{ arch }}-
+      - run:
+          name: Run the << parameters.preset >> workflow
+          command: |
+            ccache --zero-stats
+            cmake --workflow --preset << parameters.preset >>
+      - run:
+          name: Show the compiler cache's statistics
+          command: ccache --show-stats
+          when: always
+      - save_cache:
+          key: vcpkg-v1-{{ arch }}-{{ checksum "/tmp/vcpkg-key" }}
+          paths:
+            - /root/.cache/vcpkg/archives
+      - save_cache:
+          key: ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - /root/.cache/ccache
+      - when:
+          condition: << parameters.tests >>
+          steps:
+            - store_test_results:
+                path: build/<< parameters.preset >>/junit.xml
+      - store_artifacts:
+          path: build/<< parameters.preset >>/vcpkg-manifest-install.log
+          destination: vcpkg-manifest-install.log
+
+  ci:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - run:
+          name: Every Linux job and lint passed
+          command: "true"
+
+workflows:
+  ci:
+    jobs:
+      - ci-image:
+          name: ci-image-amd64
+          context: ghcr
+          arch: amd64
+          resource_class: large
+      - ci-image:
+          name: ci-image-arm64
+          context: ghcr
+          arch: arm64
+          resource_class: arm.large
+      - ci-image-manifest:
+          context: ghcr
+          requires:
+            - ci-image-amd64
+            - ci-image-arm64
+      - workflow-preset:
+          name: linux-gcc-debug
+          executor: linux
+          preset: linux-gcc-debug
+          requires:
+            - ci-image-manifest
+      - workflow-preset:
+          name: linux-clang-release
+          executor: linux
+          preset: linux-clang-release
+          requires:
+            - ci-image-manifest
+      - workflow-preset:
+          name: linux-arm64-release
+          executor:
+            name: linux
+            resource_class: arm.large
+          preset: linux-clang-release
+          requires:
+            - ci-image-manifest
+      - workflow-preset:
+          name: lint
+          executor: linux
+          preset: lint
+          tests: false
+          requires:
+            - ci-image-manifest
+      - ci:
+          requires:
+            - linux-gcc-debug
+            - linux-clang-release
+            - linux-arm64-release
+            - lint
