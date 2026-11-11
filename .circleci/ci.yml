@@ -5,9 +5,9 @@
 # just as a developer does. The `ci` job passes when every Linux job and lint pass, and is the check
 # a pull request into develop must pass.
 #
-# Building the image needs the `ghcr` context, holding GHCR_USER and GHCR_TOKEN, a GitHub token
-# allowed to write packages. Once it exists, the image is public, so a pull request from a fork,
-# which gets no context, still runs.
+# Building the image needs the `ghcr` context, holding GHCR_TOKEN, a token of takumu-dev's allowed
+# to write packages. Once it exists, the image is public, so a pull request from a fork, which gets
+# no context, still runs.
 version: 2.1
 
 parameters:
@@ -38,7 +38,7 @@ commands:
     steps:
       - run:
           name: Log in to GHCR
-          command: echo "${GHCR_TOKEN}" | docker login ghcr.io -u "${GHCR_USER}" --password-stdin
+          command: echo "${GHCR_TOKEN}" | docker login ghcr.io --username takumu-dev --password-stdin
 
   # Before logging in, which a pull request from a fork can't do.
   stop-if-image-exists:
