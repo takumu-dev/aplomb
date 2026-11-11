@@ -68,6 +68,42 @@ function(aplomb_add_program_test name description)
     )
 endfunction()
 
+# Adds a test of the build's own CMake code: a script, run through support/check_program.cmake,
+# that includes the modules it tests from APLOMB_CMAKE_DIR and stops with an error when the
+# behaviour it checks is wrong. It gets a directory of its own to work in as TEST_DIR.
+#
+#   SCRIPT       the script
+#   DEFINITIONS  the other variables it reads, each as NAME=VALUE
+#   EXPECTED_RESULT, STDERR_MATCHES
+#                passed to the script, which describes them
+function(aplomb_add_script_test name description)
+    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SCRIPT;EXPECTED_RESULT;STDERR_MATCHES" "DEFINITIONS")
+    cmake_path(ABSOLUTE_PATH arg_SCRIPT)
+    string(MAKE_C_IDENTIFIER "${description}" test_dir)
+    set(test_dir "${CMAKE_CURRENT_BINARY_DIR}/script_tests/${test_dir}")
+
+    set(arguments
+        "-DAPLOMB_CMAKE_DIR=${PROJECT_SOURCE_DIR}/cmake"
+        "-DTEST_DIR=${test_dir}"
+    )
+    foreach(definition IN LISTS arg_DEFINITIONS)
+        list(APPEND arguments "-D${definition}")
+    endforeach()
+    list(APPEND arguments -P "${arg_SCRIPT}")
+    list(JOIN arguments "$<SEMICOLON>" arguments)
+
+    set(options "-DPROGRAM=${CMAKE_COMMAND}" "-DARGUMENTS=${arguments}")
+    foreach(check IN ITEMS EXPECTED_RESULT STDERR_MATCHES)
+        if(DEFINED arg_${check})
+            list(APPEND options "-D${check}=${arg_${check}}")
+        endif()
+    endforeach()
+
+    add_test(NAME "${name}: ${description}"
+        COMMAND "${CMAKE_COMMAND}" ${options} -P "${APLOMB_TEST_SUPPORT_DIR}/check_program.cmake"
+    )
+endfunction()
+
 # The main program that every precondition test shares.
 add_library(aplomb_precondition_main OBJECT support/precondition_main.cpp)
 target_include_directories(aplomb_precondition_main PUBLIC support)
