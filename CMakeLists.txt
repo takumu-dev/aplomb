@@ -1,5 +1,6 @@
 # aplomb: an active ragdoll library on Jolt Physics. aplomb::core holds the world and everything
-# that controls its characters, and links Jolt and the standard library alone.
+# that controls its characters, and links Jolt and the standard library alone. aplomb::files reads
+# rig files into what the core takes.
 #
 # Every supported build is a preset in CMakePresets.json, so a developer and CI run the same
 # `cmake --workflow --preset <preset>`. Dependencies come only through find_package; the build never
@@ -58,6 +59,7 @@ set(APLOMB_SANITIZERS "" CACHE STRING
 aplomb_enable_sanitizers("${APLOMB_SANITIZERS}")
 
 add_subdirectory(src/core)
+add_subdirectory(src/files)
 add_subdirectory(src/scenes)
 
 if(APLOMB_BUILD_TESTS)

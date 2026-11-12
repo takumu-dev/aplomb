@@ -38,6 +38,9 @@ departs from them, it says so.
   CMake package carries the definitions that match them, so whatever links `Jolt::Jolt` compiles
   against exactly that build. Moving to another release of Jolt is a `build(deps)` commit of its
   own.
+- pedantjson comes from the overlay port in `ports/pedantjson/`, its own repository's port, until
+  vcpkg's registry carries it. The port tracks pedantjson's releases, and moving to another is a
+  `build(deps)` commit of its own too.
 
 ## Targets
 
@@ -47,6 +50,9 @@ departs from them, it says so.
   world and everything that controls a character. Its parts stay directories inside it, not
   targets, since they run as one ordered step. Its public headers sit under
   `src/core/include/aplomb/core/`, and its private headers beside its sources.
+- `aplomb::files`, in `src/files/`, reads rig files into what the core takes, and is the only target
+  that opens a file. It links the core, and pedantjson privately, so that a host that builds its
+  rigs in code never carries a JSON reader.
 - `aplomb::scenes`, in `src/scenes/`, builds scenes in code, such as `flat_ground`, into a world's
   physics system. It links the core, and the library a host ships never depends on it.
 - A target includes only the headers of what it links, since each public include tree comes only
@@ -235,7 +241,9 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
   - `aplomb_add_script_test` adds a CMake script that tests the build's own CMake code, such as
     the licence check on the fake vcpkg trees of `tests/build/licenses/`, through
     `tests/support/check_program.cmake` too.
-- The core's tests build their rigs and scenes in C++, and never read a file.
+- The core's tests build their rigs and scenes in C++, and never read a file. The tests of
+  `aplomb::files` read rig files from text, and from disk only to test reading a path and the rig
+  files in `assets/rigs/`.
 
 ## Commits and branches
 
