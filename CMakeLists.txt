@@ -19,6 +19,29 @@ include(AplombConventions)
 
 aplomb_check_compiler_floor("${CMAKE_CXX_COMPILER_ID}" "${CMAKE_CXX_COMPILER_VERSION}")
 
+# Every dependency vcpkg installed must be under a licence on the allowlist. The third-party notices
+# a host ships come from the same metadata: configuring writes them into the build directory, and
+# the `third-party-notices` target copies them over THIRD_PARTY_NOTICES.md, where they are
+# committed. A host that supplies the dependencies its own way checks their licences itself.
+if(PROJECT_IS_TOP_LEVEL AND VCPKG_MANIFEST_MODE)
+    include(AplombLicenses)
+    set(APLOMB_THIRD_PARTY_NOTICES "${PROJECT_BINARY_DIR}/THIRD_PARTY_NOTICES.md")
+    aplomb_check_licenses(
+        MANIFEST_DIR "${VCPKG_MANIFEST_DIR}"
+        INSTALLED_DIR "${VCPKG_INSTALLED_DIR}"
+        TRIPLET "${VCPKG_TARGET_TRIPLET}"
+        # vcpkg's root, where the presets find it, is the git repository of its built-in registry.
+        REGISTRY "$ENV{VCPKG_ROOT}"
+        NOTICES "${APLOMB_THIRD_PARTY_NOTICES}"
+    )
+    add_custom_target(third-party-notices
+        COMMAND "${CMAKE_COMMAND}" -E copy_if_different
+            "${APLOMB_THIRD_PARTY_NOTICES}" "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
+        COMMENT "Updating the third-party notices"
+        VERBATIM
+    )
+endif()
+
 # Standard C++23 as ordinary headers: no compiler extensions, and no scanning for C++ modules,
 # which aplomb doesn't use. Each target asks for C++23 itself.
 set(CMAKE_CXX_EXTENSIONS OFF)

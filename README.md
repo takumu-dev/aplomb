@@ -13,6 +13,7 @@ It is at an early stage. Today `aplomb::core` holds a world that owns a Jolt phy
 steps it at a fixed rate, the checks of preconditions with their replaceable handler, and the
 replaceable log sink. How the code is written is in `CODING_STANDARDS.md`.
 
-aplomb is under the MIT licence; see `LICENSE`.
+aplomb is under the MIT licence; see `LICENSE`. The libraries it ships with, and their licences,
+are in `THIRD_PARTY_NOTICES.md`.
 
 All rights to the logos in `branding/` are reserved. See `branding/README.md`.

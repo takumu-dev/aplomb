@@ -26,7 +26,13 @@ departs from them, it says so.
   manifest, with test-only ports in its `tests` feature.
 - A dependency must be under one of these licences: Zlib, MIT, BSD-2-Clause, BSD-3-Clause, BSL-1.0,
   ISC, Apache-2.0 with or without the LLVM exception, CC0-1.0 or Unlicense. A host can then ship
-  under any terms. Build tools are held to the list too, though nothing of them ships.
+  under any terms. Build tools are held to the list too, though nothing of them ships. Configuring
+  with vcpkg checks every installed port against the list in `cmake/AplombLicenses.cmake`, and
+  stops on a licence outside it, or on one the check can't decide until a person has read it and
+  recorded it there in `APLOMB_REVIEWED_LICENSES`.
+- `THIRD_PARTY_NOTICES.md` lists every port a host ships with aplomb, with its licence text. It is
+  generated from vcpkg's metadata by `cmake --build --preset <preset> --target third-party-notices`
+  and committed, and a test fails when it no longer matches.
 - Jolt comes from the overlay port in `ports/joltphysics/`, which builds it deterministic across
   platforms, in single precision, and pins its release. These options change Jolt's ABI, and Jolt's
   CMake package carries the definitions that match them, so whatever links `Jolt::Jolt` compiles
@@ -224,6 +230,9 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
     that no other check passes it. These are used sparingly.
   - `aplomb_add_compile_failure_test` adds a source built with the library's settings that must
     fail to compile, and for the reason the test names.
+  - `aplomb_add_script_test` adds a CMake script that tests the build's own CMake code, such as
+    the licence check on the fake vcpkg trees of `tests/build/licenses/`, through
+    `tests/support/check_program.cmake` too.
 - The core's tests build their rigs and scenes in C++, and never read a file.
 
 ## Commits and branches
