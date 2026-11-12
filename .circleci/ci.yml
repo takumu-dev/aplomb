@@ -101,6 +101,9 @@ jobs:
         default: true
     executor: << parameters.executor >>
     environment:
+      # A Docker job sees the host's processors, not the four its resource class gives it, and Ninja
+      # would run a compile for each and run out of the job's memory.
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CCACHE_DIR: /root/.cache/ccache
       CCACHE_MAXSIZE: 500M
@@ -151,6 +154,10 @@ jobs:
           steps:
             - store_test_results:
                 path: build/<< parameters.preset >>/junit.xml
+            # A failed run's file still names the first step at which two runs differed.
+            - store_artifacts:
+                path: build/<< parameters.preset >>/metrics
+                destination: metrics
       - store_artifacts:
           path: build/<< parameters.preset >>/vcpkg-manifest-install.log
           destination: vcpkg-manifest-install.log

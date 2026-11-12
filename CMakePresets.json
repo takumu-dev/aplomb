@@ -75,6 +75,13 @@
       }
     },
     {
+      "name": "golden-hashes",
+      "hidden": true,
+      "cacheVariables": {
+        "APLOMB_GOLDEN_HASHES": true
+      }
+    },
+    {
       "name": "linux-gcc-debug",
       "inherits": ["gcc", "debug", "sanitized"],
       "displayName": "Linux, GCC, debug"
@@ -91,7 +98,7 @@
     },
     {
       "name": "linux-clang-release",
-      "inherits": ["clang", "release", "no-exceptions"],
+      "inherits": ["clang", "release", "no-exceptions", "golden-hashes"],
       "displayName": "Linux, Clang, release"
     },
     {

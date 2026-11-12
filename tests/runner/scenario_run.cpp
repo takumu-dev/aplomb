@@ -10,11 +10,15 @@
 #include <aplomb/scenes/build_scene.hpp>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
+#include <variant>
 
 namespace {
 
@@ -31,6 +35,18 @@ std::string listed_scenes() {
 
 bool RunResult::passed() const noexcept {
     return nan_count == 0 && std::ranges::all_of(criteria, &CriterionResult::passed);
+}
+
+std::optional<aplomb::StateHashDifference>
+first_differing_step(std::span<const std::uint64_t> first, std::span<const std::uint64_t> second) {
+    const auto [first_at, second_at] = std::ranges::mismatch(first, second);
+    if (first_at == first.end() || second_at == second.end()) {
+        return std::nullopt;
+    }
+    return aplomb::StateHashDifference{
+        .step = static_cast<std::uint64_t>(first_at - first.begin()),
+        .state_hashes = {*first_at, *second_at},
+    };
 }
 
 std::expected<RunResult, RunError> run_scenario(const aplomb::ScenarioDesc& scenario,
@@ -63,14 +79,22 @@ std::expected<RunResult, RunError> run_scenario(const aplomb::ScenarioDesc& scen
     RunResult result;
     result.steps = steps_in(scenario.duration, step_rate);
     MetricRecorder recorder(step_rate);
+    result.state_hashes.reserve(static_cast<std::size_t>(result.steps) + 1);
+    result.state_hashes.push_back(world->state_hash());
     for (std::uint64_t step = 0; step < result.steps; ++step) {
         world->step();
         recorder.record(part_states(*world, world->character(*character)));
+        result.state_hashes.push_back(world->state_hash());
     }
 
-    result.metrics = {.scenario = scenario.name, .step_rate = step_rate, .values = {}};
+    result.metrics = {.scenario = scenario.name, .step_rate = step_rate};
     for (const aplomb::Metric metric : scenario.metrics) {
-        result.metrics.values.push_back({.metric = metric, .value = recorder.value(metric)});
+        result.metrics.values.push_back({
+            .metric = metric,
+            .value = metric == aplomb::Metric::state_hash_final
+                         ? std::variant<double, std::uint64_t>(result.state_hashes.back())
+                         : recorder.value(metric),
+        });
     }
     result.nan_count = static_cast<std::uint64_t>(recorder.value(aplomb::Metric::nan_count));
     for (const aplomb::PassCriterion& criterion : scenario.pass) {

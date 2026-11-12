@@ -8,6 +8,8 @@
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -61,6 +63,10 @@ struct RunResult {
     /// How many steps the run took.
     std::uint64_t steps = 0;
 
+    /// The world's state hash before the first step and after each one, so that the hash after
+    /// step n is at index n.
+    std::vector<std::uint64_t> state_hashes{};
+
     /// How many NaN values appeared in the parts' states, whether or not the scenario records
     /// nan_count.
     std::uint64_t nan_count = 0;
@@ -72,9 +78,17 @@ struct RunResult {
     [[nodiscard]] bool passed() const noexcept;
 };
 
+/// The first step at which two runs' state hashes differ, if any does.
+///
+/// \param first The first run's state hash at each step.
+/// \param second The second run's, of as many steps.
+/// \return The step, with both hashes at it, or nothing where every step's hashes agree.
+[[nodiscard]] std::optional<aplomb::StateHashDifference>
+first_differing_step(std::span<const std::uint64_t> first, std::span<const std::uint64_t> second);
+
 /// Runs a scenario at a step rate: drops a character made from the rig into the scenario's scene,
 /// steps the world for the whole number of steps nearest the scenario's duration, and records its
-/// metrics after every step.
+/// metrics and the world's state hash after every step.
 ///
 /// \param scenario The scenario.
 /// \param rig The rig its rig file describes.

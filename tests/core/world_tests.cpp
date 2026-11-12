@@ -3,24 +3,29 @@
 #include "host_services.hpp"
 #include "jolt_runtime.hpp"
 #include "recording_log_sink.hpp"
+#include "rigs.hpp"
 #include "scoped_log_sink.hpp"
 #include <aplomb/core/log_sink.hpp>
 #include <aplomb/core/object_layers.hpp>
 #include <aplomb/core/world_error.hpp>
 #include <aplomb/core/world_settings.hpp>
+#include <aplomb/scenes/flat_ground.hpp>
 
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Constraints/Constraint.h>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
 #include <catch2/matchers/catch_matchers.hpp>
 #include <catch2/matchers/catch_matchers_string.hpp>
 
+#include <cstdint>
 #include <format>
 #include <limits>
+#include <utility>
 #include <vector>
 
 namespace {
@@ -152,4 +157,80 @@ TEST_CASE("a step that runs out of room in the physics system logs a warning", "
     CHECK(messages.front().severity == aplomb::LogSeverity::warning);
     CHECK_THAT(messages.front().text,
                Catch::Matchers::StartsWith("a step ran out of room in the physics system for "));
+}
+
+TEST_CASE("a world's state hash stays the same while its state does", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    add_falling_sphere(world->physics_system());
+
+    const std::uint64_t before = world->state_hash();
+
+    CHECK(world->state_hash() == before);
+}
+
+TEST_CASE("a world's state hash changes when a step moves a body", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    add_falling_sphere(world->physics_system());
+    const std::uint64_t before = world->state_hash();
+
+    world->step();
+
+    CHECK(world->state_hash() != before);
+}
+
+TEST_CASE("a world's state hash covers its scene", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    const JPH::BodyID ground = aplomb::build_flat_ground(world->physics_system());
+    const std::uint64_t before = world->state_hash();
+
+    world->physics_system().GetBodyInterface().SetPosition(ground, JPH::RVec3(5.0F, -1.0F, 0.0F),
+                                                           JPH::EActivation::DontActivate);
+
+    CHECK(world->state_hash() != before);
+}
+
+TEST_CASE("a world's state hash covers its characters' joints", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    REQUIRE(world->add_character(chain_rig(), {}).has_value());
+    const JPH::Constraints joints = world->physics_system().GetConstraints();
+    REQUIRE_FALSE(joints.empty());
+    const std::uint64_t before = world->state_hash();
+
+    joints.front()->SetEnabled(false);
+
+    CHECK(world->state_hash() != before);
+}
+
+TEST_CASE("two worlds made alike give the same state hash at every step", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    const auto make_world = [&] {
+        auto world = aplomb::World::create(services.world_settings());
+        REQUIRE(world.has_value());
+        aplomb::build_flat_ground(world->physics_system());
+        REQUIRE(world->add_character(chain_rig(), {.position = JPH::Vec3(0.0F, 0.5F, 0.0F)})
+                    .has_value());
+        return std::move(*world);
+    };
+    aplomb::World first = make_world();
+    aplomb::World second = make_world();
+
+    // Two seconds at 60 Hz: the character falls, lands and folds onto the ground.
+    for (int step = 0; step < 120; ++step) {
+        first.step();
+        second.step();
+        REQUIRE(first.state_hash() == second.state_hash());
+    }
 }

@@ -14,12 +14,15 @@
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/PhysicsMaterial.h>
+#include <Jolt/Physics/StateRecorder.h>
 
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <expected>
 #include <format>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -96,6 +99,34 @@ std::string describe_shortage(JPH::EPhysicsUpdateError errors) {
     append_if_set(JPH::EPhysicsUpdateError::ContactConstraintsFull, "contact constraints");
     return shortage;
 }
+
+// A state recorder that keeps nothing of what is saved to it but its 64-bit FNV-1a hash, whose
+// constants are fixed by its definition rather than by any library's version. Jolt saves values in
+// the platform's byte order, which is little-endian on every platform aplomb supports.
+class StateHasher final : public JPH::StateRecorder {
+  public:
+    [[nodiscard]] std::uint64_t hash() const noexcept { return hash_; }
+
+    void WriteBytes(const void* data, std::size_t size) override {
+        for (const std::byte byte : std::span(static_cast<const std::byte*>(data), size)) {
+            hash_ = (hash_ ^ std::to_integer<std::uint64_t>(byte)) * prime;
+        }
+    }
+
+    void ReadBytes(void* /*data*/, std::size_t /*size*/) override {
+        APLOMB_ASSERT(false, "a state hasher is only written to");
+    }
+
+    [[nodiscard]] bool IsEOF() const override { return false; }
+
+    [[nodiscard]] bool IsFailed() const override { return false; }
+
+  private:
+    static constexpr std::uint64_t offset_basis = 0xcbf29ce484222325;
+    static constexpr std::uint64_t prime = 0x100000001b3;
+
+    std::uint64_t hash_ = offset_basis;
+};
 
 } // namespace
 
@@ -203,6 +234,13 @@ const Character& World::character(CharacterId character) const {
     const std::unique_ptr<Character>& found = state_->characters[character.index()];
     APLOMB_ASSERT(found != nullptr, "the character is one of the world's characters");
     return *found;
+}
+
+std::uint64_t World::state_hash() const {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    StateHasher hasher;
+    state_->physics_system.SaveState(hasher);
+    return hasher.hash();
 }
 
 JPH::PhysicsSystem& World::physics_system() {

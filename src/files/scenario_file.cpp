@@ -37,7 +37,11 @@ using detail::JsonFile;
 
 constexpr std::string_view kind = "scenario file";
 
-constexpr std::array all_metrics{Metric::max_speed_after_3s, Metric::nan_count};
+constexpr std::array all_metrics{
+    Metric::max_speed_after_3s,
+    Metric::nan_count,
+    Metric::state_hash_final,
+};
 
 constexpr std::array all_comparisons{
     Comparison::less,    Comparison::less_or_equal, Comparison::equal, Comparison::greater_or_equal,
@@ -205,9 +209,19 @@ class ScenarioFileReader {
         }
         std::vector<PlacedCriterion> placed;
         for (const Metric metric : all_metrics) {
-            if (const std::optional<Field> criterion = reader->take_optional(metric_name(metric))) {
-                read_criterion(*criterion, metric, placed);
+            const std::optional<Field> criterion = reader->take_optional(metric_name(metric));
+            if (!criterion.has_value()) {
+                continue;
             }
+            if (metric == Metric::state_hash_final) {
+                file_.get().report_at(
+                    *criterion, FileProblemCode::invalid_value,
+                    std::format(R"(the metric "{}" has no pass criterion, since a golden hash )"
+                                "checks it",
+                                metric_name(metric)));
+                continue;
+            }
+            read_criterion(*criterion, metric, placed);
         }
         reader->finish();
         std::ranges::sort(placed, {}, &PlacedCriterion::offset);

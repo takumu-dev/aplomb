@@ -175,6 +175,9 @@ TEST_CASE("each mistake in a scenario file's syntax or structure is one problem,
          "/timeline/0/message"},
         {"a timeline entry without a message", R"("timeline": [])", R"("timeline": [{"t": 1}])",
          missing_key, 10, 16, "/timeline/0/message"},
+        {"a pass criterion of the final state hash, which a golden hash checks instead",
+         R"("le": 0})", R"("le": 0}, "state_hash_final": {"eq": 0})", invalid_value, 14, 58,
+         "/pass/state_hash_final"},
         {"a pass criterion of a metric that doesn't exist", R"("le": 0})",
          R"("le": 0}, "speed": {"lt": 1})", unknown_key, 14, 38, "/pass/speed"},
         {"a comparison that doesn't exist", R"("le": 0})", R"("lte": 0})", unknown_key, 14, 28,
@@ -204,6 +207,16 @@ TEST_CASE("each mistake in what a scenario file describes is one problem, at the
          R"(["max_speed_after_3s", "nan_count"])", R"(["max_speed_after_3s"])", invalid_value, 14,
          18, "/pass/nan_count"},
     })));
+}
+
+TEST_CASE("a scenario file can record the final state hash", "[files]") {
+    const auto scenario = aplomb::parse_scenario_file(
+        drop_file_with({{R"("nan_count"])", R"("nan_count", "state_hash_final"])"}}), "drop.json");
+
+    REQUIRE(scenario.has_value());
+    CHECK(scenario->metrics == std::vector{aplomb::Metric::max_speed_after_3s,
+                                           aplomb::Metric::nan_count,
+                                           aplomb::Metric::state_hash_final});
 }
 
 TEST_CASE("a run of exactly 3 s is long enough to record max_speed_after_3s", "[files]") {
@@ -276,8 +289,8 @@ TEST_CASE("a scenario file's problems read as a compiler's diagnostics, and its 
     REQUIRE_FALSE(scenario.has_value());
     CHECK(std::format("{}", scenario.error()) ==
           "the scenario file \"scenarios/drop.json\" has 2 problems: "
-          "scenarios/drop.json:11:37: /metrics/1: a metric is \"max_speed_after_3s\" or "
-          "\"nan_count\", not \"speed\"; "
+          "scenarios/drop.json:11:37: /metrics/1: a metric is \"max_speed_after_3s\", "
+          "\"nan_count\" or \"state_hash_final\", not \"speed\"; "
           "scenarios/drop.json:13:27: /pass/max_speed_after_3s: a pass criterion compares its "
           "metric with \"lt\", \"le\", \"eq\", \"ge\" or \"gt\"");
 }

@@ -15,6 +15,7 @@
 
 #include <Jolt/Physics/PhysicsSystem.h>
 
+#include <cstdint>
 #include <expected>
 #include <memory>
 
@@ -73,6 +74,14 @@ class World {
     ///
     /// \param character A character of this world.
     [[nodiscard]] const Character& character(CharacterId character) const;
+
+    /// A hash of the world's whole physical state: every body and constraint in its physics system,
+    /// the scene's included, with the contacts Jolt carries from one step to the next.
+    ///
+    /// Jolt's state recorder saves the state in a fixed order, and the hash is the 64-bit FNV-1a of
+    /// what it saves, so the same state gives the same hash on every platform. Two runs that give
+    /// the same hash at every step ran alike.
+    [[nodiscard]] std::uint64_t state_hash() const;
 
     /// The physics system the world owns, to which the host adds the bodies of its scene.
     [[nodiscard]] JPH::PhysicsSystem& physics_system();
