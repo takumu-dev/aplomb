@@ -151,5 +151,6 @@ function(aplomb_add_compile_failure_test name description)
 endfunction()
 
 add_subdirectory(core)
+add_subdirectory(files)
 add_subdirectory(scenes)
 add_subdirectory(build)

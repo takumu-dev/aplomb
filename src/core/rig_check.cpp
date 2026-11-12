@@ -10,6 +10,7 @@
 
 #include <Jolt/Jolt.h>
 
+#include <Jolt/Math/Math.h>
 #include <Jolt/Math/Quat.h>
 #include <Jolt/Math/Vec3.h>
 
@@ -67,6 +68,8 @@ bool is_finite(JPH::Vec3 vector) {
 
 bool is_positive_and_finite(float value) { return value > 0.0F && std::isfinite(value); }
 
+bool is_non_negative_and_finite(float value) { return value >= 0.0F && std::isfinite(value); }
+
 bool is_unit(JPH::Vec3 vector) {
     return is_finite(vector) && std::abs(vector.LengthSq() - 1.0F) <= unit_tolerance;
 }
@@ -100,8 +103,14 @@ class RigChecker {
     }
 
   private:
-    void report(RigProblemCode code, std::optional<PartId> part, std::string message) {
-        problems_.push_back({.code = code, .part = part, .message = std::move(message)});
+    void report(RigProblemCode code, std::optional<PartId> part, std::string field,
+                std::string message) {
+        problems_.push_back({
+            .code = code,
+            .part = part,
+            .field = std::move(field),
+            .message = std::move(message),
+        });
     }
 
     [[nodiscard]] const std::string& name_of(PartId part) const {
@@ -114,7 +123,7 @@ class RigChecker {
         std::map<std::string_view, PartId> parts_by_name;
         for (std::size_t part = 0; part < rig_.get().parts.size(); ++part) {
             if (!parts_by_name.try_emplace(rig_.get().parts[part].name, part_at(part)).second) {
-                report(RigProblemCode::duplicate_part_name, part_at(part),
+                report(RigProblemCode::duplicate_part_name, part_at(part), "name",
                        std::format("the name \"{}\" is given to more than one part",
                                    rig_.get().parts[part].name));
             }
@@ -127,7 +136,7 @@ class RigChecker {
                        found != parts_by_name.end()) {
                 parents_[part] = found->second;
             } else {
-                report(RigProblemCode::unknown_parent, part_at(part),
+                report(RigProblemCode::unknown_parent, part_at(part), "parent",
                        std::format(R"(part "{}" has the parent "{}", but no part has that name)",
                                    rig_.get().parts[part].name, *parent));
             }
@@ -136,10 +145,10 @@ class RigChecker {
 
     void check_root_parts() {
         if (roots_.empty()) {
-            report(RigProblemCode::no_root_part, std::nullopt,
+            report(RigProblemCode::no_root_part, std::nullopt, "",
                    "the rig has no root part, a part without a parent, where it must have one");
         } else if (roots_.size() > 1) {
-            report(RigProblemCode::several_root_parts, roots_[1],
+            report(RigProblemCode::several_root_parts, roots_[1], "parent",
                    std::format("the rig has {} root parts, {}, where it must have one",
                                roots_.size(), list_names(rig_, roots_)));
         }
@@ -160,7 +169,7 @@ class RigChecker {
             }
             if (part.has_value() && visits[part->index()] == Visit::on_path) {
                 std::vector<PartId> cycle(std::ranges::find(path, *part), path.end());
-                report(RigProblemCode::cycle, cycle.front(),
+                report(RigProblemCode::cycle, cycle.front(), "parent",
                        cycle.size() == 1
                            ? std::format("part \"{}\" is its own parent", name_of(cycle.front()))
                            : std::format("parts {} are each other's ancestors",
@@ -176,34 +185,40 @@ class RigChecker {
         const PartDesc& part = rig_.get().parts[id.index()];
         const bool is_root = !part.parent.has_value();
         if (is_root && part.joint.has_value()) {
-            report(RigProblemCode::joint_on_root_part, id,
+            report(RigProblemCode::joint_on_root_part, id, "joint",
                    std::format("the root part \"{}\" has a joint, but no parent part to join",
                                part.name));
         } else if (!is_root && !part.joint.has_value()) {
             report(
-                RigProblemCode::missing_joint, id,
+                RigProblemCode::missing_joint, id, "",
                 std::format("part \"{}\" has no joint to join it to its parent part", part.name));
         }
         if (is_root && part.muscle.has_value()) {
-            report(RigProblemCode::muscle_on_root_part, id,
+            report(RigProblemCode::muscle_on_root_part, id, "muscle",
                    std::format("the root part \"{}\" has a muscle, but no joint for it to move",
                                part.name));
         }
 
         if (!is_positive_and_finite(part.mass)) {
-            report(RigProblemCode::invalid_mass, id,
+            report(RigProblemCode::invalid_mass, id, "mass",
                    std::format("the mass of part \"{}\" must be a positive, finite number of "
                                "kilograms, not {}",
                                part.name, part.mass));
         }
+        if (!is_non_negative_and_finite(part.friction)) {
+            report(RigProblemCode::invalid_friction, id, "friction",
+                   std::format("the friction of part \"{}\" must be a finite number no less than "
+                               "0, not {}",
+                               part.name, part.friction));
+        }
         std::visit([&](const auto& shape) { check_shape(id, shape); }, part.shape);
         if (!is_finite(part.bind_position)) {
-            report(RigProblemCode::non_finite_position, id,
+            report(RigProblemCode::non_finite_position, id, "bind_position",
                    std::format("the bind_position of part \"{}\" must be finite, not {}", part.name,
                                format_vector(part.bind_position)));
         }
         if (!is_unit(part.bind_rotation)) {
-            report(RigProblemCode::non_unit_rotation, id,
+            report(RigProblemCode::non_unit_rotation, id, "bind_rotation",
                    std::format("the bind_rotation of part \"{}\" must be a unit quaternion, not {}",
                                part.name, format_quaternion(part.bind_rotation)));
         }
@@ -217,7 +232,7 @@ class RigChecker {
 
     void check_size(PartId part, std::string_view shape, std::string_view size, float value) {
         if (!is_positive_and_finite(value)) {
-            report(RigProblemCode::invalid_size, part,
+            report(RigProblemCode::invalid_size, part, std::format("shape.{}", size),
                    std::format("the {} of part \"{}\"'s {} must be a positive, finite number of "
                                "metres, not {}",
                                size, name_of(part), shape, value));
@@ -229,7 +244,7 @@ class RigChecker {
         if (!is_positive_and_finite(half_extents.GetX()) ||
             !is_positive_and_finite(half_extents.GetY()) ||
             !is_positive_and_finite(half_extents.GetZ())) {
-            report(RigProblemCode::invalid_size, part,
+            report(RigProblemCode::invalid_size, part, "shape.half_extents",
                    std::format("the half_extents of part \"{}\"'s box must be positive, finite "
                                "numbers of metres, not {}",
                                name_of(part), format_vector(half_extents)));
@@ -247,7 +262,7 @@ class RigChecker {
 
     void check_anchor(PartId part, JPH::Vec3 anchor) {
         if (!is_finite(anchor)) {
-            report(RigProblemCode::non_finite_position, part,
+            report(RigProblemCode::non_finite_position, part, "joint.anchor",
                    std::format("the anchor of part \"{}\"'s joint must be finite, not {}",
                                name_of(part), format_vector(anchor)));
         }
@@ -260,13 +275,14 @@ class RigChecker {
         for (const auto& [name, axis] : {std::pair{first_name, first}, {second_name, second}}) {
             if (!is_unit(axis)) {
                 both_unit = false;
-                report(RigProblemCode::non_unit_axis, part,
+                report(RigProblemCode::non_unit_axis, part, std::format("joint.{}", name),
                        std::format("the {} of part \"{}\"'s joint must be a unit vector, not {}",
                                    name, name_of(part), format_vector(axis)));
             }
         }
         if (both_unit && std::abs(first.Dot(second)) > unit_tolerance) {
             report(RigProblemCode::axes_not_perpendicular, part,
+                   std::format("joint.{}", second_name),
                    std::format("the {} and the {} of part \"{}\"'s joint must be perpendicular",
                                first_name, second_name, name_of(part)));
         }
@@ -278,9 +294,13 @@ class RigChecker {
         if (is_within(value, least, greatest)) {
             return true;
         }
-        report(RigProblemCode::limit_out_of_range, part,
-               std::format("the {} of part \"{}\"'s joint must be {} radians, not {}", limit,
-                           name_of(part), range, value));
+        report(RigProblemCode::limit_out_of_range, part, std::format("joint.{}", limit),
+               std::format("the {} of part \"{}\"'s joint must be {} radians, {}°, not {} "
+                           "radians, {:g}°",
+                           limit, name_of(part), range,
+                           std::format("{:g}° to {:g}", JPH::RadiansToDegrees(least),
+                                       JPH::RadiansToDegrees(greatest)),
+                           value, JPH::RadiansToDegrees(value)));
         return false;
     }
 
@@ -297,10 +317,12 @@ class RigChecker {
         const bool twist_max_valid = check_limit(part, "twist_max", swing_twist.twist_max,
                                                  -JPH::JPH_PI, JPH::JPH_PI, "from -π to π");
         if (twist_min_valid && twist_max_valid && swing_twist.twist_min > swing_twist.twist_max) {
-            report(RigProblemCode::limit_out_of_range, part,
-                   std::format("the twist_min of part \"{}\"'s joint, {}, must be no greater "
-                               "than its twist_max, {}",
-                               name_of(part), swing_twist.twist_min, swing_twist.twist_max));
+            report(RigProblemCode::limit_out_of_range, part, "joint.twist_min",
+                   std::format("the twist_min of part \"{}\"'s joint, {} radians or {:g}°, "
+                               "must be no greater than its twist_max, {} radians or {:g}°",
+                               name_of(part), swing_twist.twist_min,
+                               JPH::RadiansToDegrees(swing_twist.twist_min), swing_twist.twist_max,
+                               JPH::RadiansToDegrees(swing_twist.twist_max)));
         }
     }
 
@@ -313,7 +335,7 @@ class RigChecker {
             check_limit(part, "limit_max", hinge.limit_max, 0.0F, JPH::JPH_PI, "from 0 to π");
         // Jolt holds a hinge whose limits meet fixed, which a joint isn't for.
         if (limit_min_valid && limit_max_valid && hinge.limit_min == hinge.limit_max) {
-            report(RigProblemCode::limit_out_of_range, part,
+            report(RigProblemCode::limit_out_of_range, part, "joint.limit_min",
                    std::format("the limit_min and the limit_max of part \"{}\"'s joint must "
                                "differ, not both be 0",
                                name_of(part)));
@@ -326,8 +348,9 @@ class RigChecker {
                  {"damping", muscle.damping},
                  {"max_torque", muscle.max_torque},
              }) {
-            if (!(value >= 0.0F) || !std::isfinite(value)) {
+            if (!is_non_negative_and_finite(value)) {
                 report(RigProblemCode::invalid_muscle_setting, part,
+                       std::format("muscle.{}", setting),
                        std::format("the {} of part \"{}\"'s muscle must be a finite number no "
                                    "less than 0, not {}",
                                    setting, name_of(part), value));
@@ -363,3 +386,15 @@ std::expected<RigStructure, std::vector<RigProblem>> check_rig(const RigDesc& ri
 }
 
 } // namespace aplomb::detail
+
+namespace aplomb {
+
+std::vector<RigProblem> rig_problems(const RigDesc& rig) {
+    auto structure = detail::check_rig(rig);
+    if (structure.has_value()) {
+        return {};
+    }
+    return std::move(structure.error());
+}
+
+} // namespace aplomb

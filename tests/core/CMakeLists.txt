@@ -4,6 +4,7 @@ aplomb_add_tests(core
         character_error_tests.cpp
         character_tests.cpp
         log_sink_tests.cpp
+        rig_problem_tests.cpp
         world_tests.cpp
     LIBRARIES
         aplomb::core

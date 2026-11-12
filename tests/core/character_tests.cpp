@@ -19,6 +19,7 @@
 #include <Jolt/Math/Quat.h>
 #include <Jolt/Math/Vec3.h>
 #include <Jolt/Physics/Body/Body.h>
+#include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Constraints/TwoBodyConstraint.h>
 #include <catch2/catch_test_macros.hpp>
 
@@ -152,6 +153,24 @@ TEST_CASE("a character keeps its rig's muscle settings", "[core]") {
     CHECK(muscle.stiffness == 200.0F);
     CHECK(muscle.damping == 20.0F);
     CHECK(muscle.max_torque == 120.0F);
+}
+
+TEST_CASE("a part's body has its part's friction", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    aplomb::RigDesc rig = chain_rig();
+    rig.parts[shin.index()].friction = 1.5F;
+
+    const auto id = world->add_character(rig, {});
+
+    REQUIRE(id.has_value());
+    const aplomb::Character& character = world->character(*id);
+    const JPH::BodyInterface& bodies = world->physics_system().GetBodyInterface();
+    CHECK(bodies.GetFriction(character.part_body(shin)) == 1.5F);
+    // Jolt's own default, where a rig leaves a part's friction as it is.
+    CHECK(bodies.GetFriction(character.part_body(thigh)) == 0.2F);
 }
 
 TEST_CASE("parts joined to each other don't collide", "[core]") {

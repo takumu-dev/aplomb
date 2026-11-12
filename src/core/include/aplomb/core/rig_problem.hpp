@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <aplomb/core/rig_desc.hpp>
 #include <aplomb/core/typed_id.hpp>
 
 #include <cstdint>
@@ -10,6 +11,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 namespace aplomb {
 
@@ -42,6 +44,9 @@ enum class RigProblemCode : std::uint8_t {
     /// A part's mass isn't a positive, finite number.
     invalid_mass,
 
+    /// A part's friction isn't a finite number no less than 0.
+    invalid_friction,
+
     /// A size of a part's shape isn't a positive, finite number.
     invalid_size,
 
@@ -72,9 +77,21 @@ struct RigProblem {
     /// The part the problem is with, or none when it is with the rig as a whole.
     std::optional<PartId> part;
 
+    /// The value of the part the problem is with, as the names of the members that lead to it from
+    /// the part's `PartDesc`, joined by dots, such as `joint.twist_axis`. It is empty when the
+    /// problem is with the part as a whole, or with the rig.
+    std::string field;
+
     /// What is wrong, for a person to read.
     std::string message;
 };
+
+/// Checks a rig in full, as a world does before it makes a character from it.
+///
+/// \param rig The rig to check.
+/// \return Every problem with the rig, those with how its parts hang together first, or none when
+///         a character can be made from it.
+[[nodiscard]] std::vector<RigProblem> rig_problems(const RigDesc& rig);
 
 } // namespace aplomb
 
