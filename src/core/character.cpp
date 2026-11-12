@@ -132,6 +132,7 @@ JPH::Ref<JPH::RagdollSettings> make_ragdoll_settings(const RigDesc& rig,
         ragdoll_part.mObjectLayer = object_layers::moving;
         ragdoll_part.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
         ragdoll_part.mMassPropertiesOverride.mMass = part.mass;
+        ragdoll_part.mFriction = part.friction;
         if (part.joint.has_value()) {
             ragdoll_part.mToParent = std::visit(
                 [&](const auto& joint) { return make_constraint(joint, root); }, *part.joint);

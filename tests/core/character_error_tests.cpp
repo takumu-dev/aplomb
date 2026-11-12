@@ -53,6 +53,7 @@ struct Mistake {
     void (*make)(aplomb::RigDesc& rig);
     aplomb::RigProblemCode code;
     std::optional<std::size_t> part;
+    std::string_view field;
 };
 
 // Adds a character to a world of its own.
@@ -72,114 +73,118 @@ TEST_CASE("a character isn't added from a rig with a mistake, and the problem na
     const JoltRuntime runtime;
     const Mistake mistake = GENERATE(Catch::Generators::values<Mistake>({
         {"two parts with one name",
-         [](aplomb::RigDesc& rig) { rig.parts[shin].name = "thigh"; }, duplicate_part_name, shin},
+         [](aplomb::RigDesc& rig) { rig.parts[shin].name = "thigh"; }, duplicate_part_name, shin, "name"},
         {"a parent that no part is named",
-         [](aplomb::RigDesc& rig) { rig.parts[shin].parent = "knee"; }, unknown_parent, shin},
-        {"no parts", [](aplomb::RigDesc& rig) { rig.parts.clear(); }, no_root_part, std::nullopt},
+         [](aplomb::RigDesc& rig) { rig.parts[shin].parent = "knee"; }, unknown_parent, shin, "parent"},
+        {"no parts", [](aplomb::RigDesc& rig) { rig.parts.clear(); }, no_root_part, std::nullopt, ""},
         {"two parts without a parent",
          [](aplomb::RigDesc& rig) {
              rig.parts[shin].parent.reset();
              rig.parts[shin].joint.reset();
              rig.parts[shin].muscle.reset();
          },
-         several_root_parts, shin},
+         several_root_parts, shin, "parent"},
         {"a part that is its own parent",
-         [](aplomb::RigDesc& rig) { rig.parts[shin].parent = "shin"; }, cycle, shin},
+         [](aplomb::RigDesc& rig) { rig.parts[shin].parent = "shin"; }, cycle, shin, "parent"},
         {"a joint on the root part",
          [](aplomb::RigDesc& rig) { rig.parts[pelvis].joint = rig.parts[thigh].joint; },
-         joint_on_root_part, pelvis},
+         joint_on_root_part, pelvis, "joint"},
         {"a part other than the root part without a joint",
-         [](aplomb::RigDesc& rig) { rig.parts[shin].joint.reset(); }, missing_joint, shin},
+         [](aplomb::RigDesc& rig) { rig.parts[shin].joint.reset(); }, missing_joint, shin, ""},
         {"a muscle on the root part",
          [](aplomb::RigDesc& rig) { rig.parts[pelvis].muscle = aplomb::MuscleDesc{}; },
-         muscle_on_root_part, pelvis},
+         muscle_on_root_part, pelvis, "muscle"},
         {"a mass of 0", [](aplomb::RigDesc& rig) { rig.parts[thigh].mass = 0.0F; }, invalid_mass,
-         thigh},
+         thigh, "mass"},
         {"a negative mass", [](aplomb::RigDesc& rig) { rig.parts[thigh].mass = -1.0F; },
-         invalid_mass, thigh},
+         invalid_mass, thigh, "mass"},
         {"an infinite mass", [](aplomb::RigDesc& rig) { rig.parts[thigh].mass = infinity; },
-         invalid_mass, thigh},
+         invalid_mass, thigh, "mass"},
         {"a mass that isn't a number", [](aplomb::RigDesc& rig) { rig.parts[thigh].mass = not_a_number; },
-         invalid_mass, thigh},
+         invalid_mass, thigh, "mass"},
+        {"a negative friction", [](aplomb::RigDesc& rig) { rig.parts[thigh].friction = -0.1F; },
+         invalid_friction, thigh, "friction"},
+        {"an infinite friction", [](aplomb::RigDesc& rig) { rig.parts[thigh].friction = infinity; },
+         invalid_friction, thigh, "friction"},
         {"a box with a half extent of 0",
          [](aplomb::RigDesc& rig) {
              rig.parts[pelvis].shape = aplomb::BoxDesc{.half_extents = JPH::Vec3(0.1F, 0.0F, 0.1F)};
          },
-         invalid_size, pelvis},
+         invalid_size, pelvis, "shape.half_extents"},
         {"a capsule with a negative radius",
          [](aplomb::RigDesc& rig) {
              std::get<aplomb::CapsuleDesc>(rig.parts[thigh].shape).radius = -0.1F;
          },
-         invalid_size, thigh},
+         invalid_size, thigh, "shape.radius"},
         {"a capsule with a half height of 0",
          [](aplomb::RigDesc& rig) {
              std::get<aplomb::CapsuleDesc>(rig.parts[thigh].shape).half_height = 0.0F;
          },
-         invalid_size, thigh},
+         invalid_size, thigh, "shape.half_height"},
         {"a sphere whose radius isn't a number",
          [](aplomb::RigDesc& rig) { rig.parts[shin].shape = aplomb::SphereDesc{.radius = not_a_number}; },
-         invalid_size, shin},
+         invalid_size, shin, "shape.radius"},
         {"a bind position that isn't finite",
          [](aplomb::RigDesc& rig) { rig.parts[shin].bind_position = JPH::Vec3(not_a_number, 0.0F, 0.0F); },
-         non_finite_position, shin},
+         non_finite_position, shin, "bind_position"},
         {"an anchor that isn't finite",
          [](aplomb::RigDesc& rig) { shin_joint(rig).anchor = JPH::Vec3(0.0F, infinity, 0.0F); },
-         non_finite_position, shin},
+         non_finite_position, shin, "joint.anchor"},
         {"a bind rotation that isn't a unit quaternion",
          [](aplomb::RigDesc& rig) {
              rig.parts[thigh].bind_rotation = JPH::Quat(0.0F, 0.0F, 0.0F, 2.0F);
          },
-         non_unit_rotation, thigh},
+         non_unit_rotation, thigh, "bind_rotation"},
         {"a bind rotation that isn't a number",
          [](aplomb::RigDesc& rig) {
              rig.parts[thigh].bind_rotation = JPH::Quat(not_a_number, 0.0F, 0.0F, 1.0F);
          },
-         non_unit_rotation, thigh},
+         non_unit_rotation, thigh, "bind_rotation"},
         {"a twist axis that isn't a unit vector",
          [](aplomb::RigDesc& rig) { thigh_joint(rig).twist_axis = JPH::Vec3(0.0F, -2.0F, 0.0F); },
-         non_unit_axis, thigh},
+         non_unit_axis, thigh, "joint.twist_axis"},
         {"a hinge axis of 0",
          [](aplomb::RigDesc& rig) { shin_joint(rig).hinge_axis = JPH::Vec3::sZero(); },
-         non_unit_axis, shin},
+         non_unit_axis, shin, "joint.hinge_axis"},
         {"a plane axis along the twist axis",
          [](aplomb::RigDesc& rig) { thigh_joint(rig).plane_axis = JPH::Vec3(0.0F, -1.0F, 0.0F); },
-         axes_not_perpendicular, thigh},
+         axes_not_perpendicular, thigh, "joint.plane_axis"},
         {"a normal axis that isn't perpendicular to the hinge axis",
          [](aplomb::RigDesc& rig) { shin_joint(rig).normal_axis = JPH::Vec3(0.6F, -0.8F, 0.0F); },
-         axes_not_perpendicular, shin},
+         axes_not_perpendicular, shin, "joint.normal_axis"},
         {"a negative normal half cone",
          [](aplomb::RigDesc& rig) { thigh_joint(rig).normal_half_cone = -0.1F; },
-         limit_out_of_range, thigh},
+         limit_out_of_range, thigh, "joint.normal_half_cone"},
         {"a plane half cone above π",
          [](aplomb::RigDesc& rig) { thigh_joint(rig).plane_half_cone = 3.2F; },
-         limit_out_of_range, thigh},
+         limit_out_of_range, thigh, "joint.plane_half_cone"},
         {"a twist_min below -π", [](aplomb::RigDesc& rig) { thigh_joint(rig).twist_min = -3.2F; },
-         limit_out_of_range, thigh},
+         limit_out_of_range, thigh, "joint.twist_min"},
         {"a twist_max that isn't a number",
          [](aplomb::RigDesc& rig) { thigh_joint(rig).twist_max = not_a_number; }, limit_out_of_range,
-         thigh},
+         thigh, "joint.twist_max"},
         {"a twist_min above the twist_max",
          [](aplomb::RigDesc& rig) {
              thigh_joint(rig).twist_min = 0.3F;
              thigh_joint(rig).twist_max = 0.2F;
          },
-         limit_out_of_range, thigh},
+         limit_out_of_range, thigh, "joint.twist_min"},
         {"a positive limit_min", [](aplomb::RigDesc& rig) { shin_joint(rig).limit_min = 0.5F; },
-         limit_out_of_range, shin},
+         limit_out_of_range, shin, "joint.limit_min"},
         {"a limit_max above π", [](aplomb::RigDesc& rig) { shin_joint(rig).limit_max = 3.2F; },
-         limit_out_of_range, shin},
+         limit_out_of_range, shin, "joint.limit_max"},
         {"hinge limits that are both 0",
          [](aplomb::RigDesc& rig) { shin_joint(rig).limit_min = 0.0F; }, limit_out_of_range,
-         shin},
+         shin, "joint.limit_min"},
         {"a negative stiffness",
          [](aplomb::RigDesc& rig) { rig.parts[thigh].muscle->stiffness = -1.0F; },
-         invalid_muscle_setting, thigh},
+         invalid_muscle_setting, thigh, "muscle.stiffness"},
         {"a damping that isn't a number",
          [](aplomb::RigDesc& rig) { rig.parts[thigh].muscle->damping = not_a_number; },
-         invalid_muscle_setting, thigh},
+         invalid_muscle_setting, thigh, "muscle.damping"},
         {"an infinite max_torque",
          [](aplomb::RigDesc& rig) { rig.parts[shin].muscle->max_torque = infinity; },
-         invalid_muscle_setting, shin},
+         invalid_muscle_setting, shin, "muscle.max_torque"},
     }));
     INFO("a rig with " << mistake.description);
     aplomb::RigDesc rig = chain_rig();
@@ -195,6 +200,7 @@ TEST_CASE("a character isn't added from a rig with a mistake, and the problem na
     const std::optional<aplomb::PartId> part = mistake.part.transform(
         [](std::size_t index) { return aplomb::PartId(static_cast<std::uint32_t>(index)); });
     CHECK(error.problems.front().part == part);
+    CHECK(error.problems.front().field == mistake.field);
 }
 
 TEST_CASE("a character's rig may be close to unit lengths and right angles, as a person writes "

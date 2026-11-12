@@ -33,6 +33,11 @@ struct PartDesc {
     /// The part's mass, a positive number of kilograms.
     float mass = 0.0F;
 
+    /// How much the part grips what it slides on, a finite number no less than 0, which Jolt
+    /// combines with the other body's as the square root of their product. It starts at Jolt's own
+    /// default.
+    float friction = 0.2F;
+
     /// Where the part's origin is in the bind pose.
     JPH::Vec3 bind_position = JPH::Vec3::sZero();
 
