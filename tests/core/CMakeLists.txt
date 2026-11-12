@@ -79,3 +79,8 @@ aplomb_add_precondition_test(core "reaching a removed character fires its precon
     SOURCE programs/removed_character.cpp
     MESSAGE "the character is one of the world's characters"
 )
+aplomb_add_precondition_test(core
+    "pushing a part the character's rig doesn't have fires its precondition"
+    SOURCE programs/push_to_unknown_part.cpp
+    MESSAGE "the part is one of the character's parts"
+)

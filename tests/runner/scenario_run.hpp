@@ -24,6 +24,9 @@ enum class RunErrorCode : std::uint8_t {
 
     /// The scenario's character couldn't be added to the world.
     invalid_character,
+
+    /// The scenario's timeline pushes a part that its rig doesn't have.
+    unknown_part,
 };
 
 /// Why a scenario couldn't run.
@@ -87,8 +90,13 @@ struct RunResult {
 first_differing_step(std::span<const std::uint64_t> first, std::span<const std::uint64_t> second);
 
 /// Runs a scenario at a step rate: drops a character made from the rig into the scenario's scene,
-/// steps the world for the whole number of steps nearest the scenario's duration, and records its
-/// metrics and the world's state hash after every step.
+/// steps the world for the whole number of steps nearest the scenario's duration, sending the
+/// pushes of its timeline as it goes, and records its metrics and the world's state hash after
+/// every step.
+///
+/// The pushes are sent in the order of their times, and those of one time in the timeline's order.
+/// A push nearest the end of the run is sent before the last step, since nothing sent after it
+/// would take effect.
 ///
 /// \param scenario The scenario.
 /// \param rig The rig its rig file describes.

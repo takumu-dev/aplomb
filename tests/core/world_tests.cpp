@@ -7,6 +7,7 @@
 #include "scoped_log_sink.hpp"
 #include <aplomb/core/log_sink.hpp>
 #include <aplomb/core/object_layers.hpp>
+#include <aplomb/core/typed_id.hpp>
 #include <aplomb/core/world_error.hpp>
 #include <aplomb/core/world_settings.hpp>
 #include <aplomb/scenes/flat_ground.hpp>
@@ -72,6 +73,26 @@ aplomb::WorldSettings at_step_rate(HostServices& services, float step_rate) {
     aplomb::WorldSettings settings = services.world_settings();
     settings.step_rate = step_rate;
     return settings;
+}
+
+const aplomb::PartId pelvis(0);
+
+// A world with the chain rig in mid-air, falling freely, as its only character.
+struct ChainInAir {
+    aplomb::World world;
+    aplomb::CharacterId character;
+};
+
+ChainInAir chain_in_air(HostServices& services) {
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    const auto character = world->add_character(chain_rig(), {});
+    REQUIRE(character.has_value());
+    return {.world = std::move(*world), .character = *character};
+}
+
+JPH::Vec3 pelvis_position(const ChainInAir& chain) {
+    return chain.world.character(chain.character).physics_pose()[pelvis].position;
 }
 
 float vertical_velocity(const JPH::PhysicsSystem& physics_system, JPH::BodyID body) {
@@ -233,4 +254,107 @@ TEST_CASE("two worlds made alike give the same state hash at every step", "[core
         second.step();
         REQUIRE(first.state_hash() == second.state_hash());
     }
+}
+
+TEST_CASE("a pushed part moves in its impulse's direction", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir pushed = chain_in_air(services);
+    ChainInAir unpushed = chain_in_air(services);
+    const JPH::Vec3 impulse(20.0F, 0.0F, 0.0F);
+
+    pushed.world.push(pushed.character, pelvis, pelvis_position(pushed), impulse);
+    pushed.world.step();
+    unpushed.world.step();
+
+    // Both fall alike, so the push alone parts them.
+    const JPH::Vec3 moved = pelvis_position(pushed) - pelvis_position(unpushed);
+    CHECK(moved.Length() > 0.0F);
+    CHECK(moved.Normalized().Dot(impulse.Normalized()) > 0.99F);
+}
+
+TEST_CASE("a push takes effect at the next step, not when it is sent", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir pushed = chain_in_air(services);
+    ChainInAir unpushed = chain_in_air(services);
+    REQUIRE(pushed.world.state_hash() == unpushed.world.state_hash());
+
+    pushed.world.push(pushed.character, pelvis, pelvis_position(pushed),
+                      JPH::Vec3(20.0F, 0.0F, 0.0F));
+
+    CHECK(pushed.world.state_hash() == unpushed.world.state_hash());
+    pushed.world.step();
+    unpushed.world.step();
+    CHECK(pushed.world.state_hash() != unpushed.world.state_hash());
+}
+
+TEST_CASE("a push is applied at its point, so one above a part's centre turns the part more",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir at_centre = chain_in_air(services);
+    ChainInAir above_centre = chain_in_air(services);
+    const JPH::Vec3 impulse(20.0F, 0.0F, 0.0F);
+    const auto pelvis_spin = [](const ChainInAir& chain) {
+        const JPH::BodyID body = chain.world.character(chain.character).part_body(pelvis);
+        return chain.world.physics_system().GetBodyInterface().GetAngularVelocity(body).GetZ();
+    };
+
+    at_centre.world.push(at_centre.character, pelvis, pelvis_position(at_centre), impulse);
+    above_centre.world.push(above_centre.character, pelvis,
+                            pelvis_position(above_centre) + JPH::Vec3(0.0F, 0.1F, 0.0F), impulse);
+    at_centre.world.step();
+    above_centre.world.step();
+
+    // An impulse along +X above the centre turns the part about -Z, besides how the thigh turns
+    // it by holding back its joint.
+    CHECK(pelvis_spin(above_centre) < pelvis_spin(at_centre) - 1.0F);
+}
+
+TEST_CASE("the same pushes sent in the same order give the same state hash at every step",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir first = chain_in_air(services);
+    ChainInAir second = chain_in_air(services);
+    const aplomb::PartId shin(2);
+    // Two pushes before one step, then one more some steps later.
+    const auto push = [&](ChainInAir& chain, int step) {
+        if (step == 0) {
+            chain.world.push(chain.character, pelvis, pelvis_position(chain),
+                             JPH::Vec3(15.0F, 0.0F, 5.0F));
+            chain.world.push(chain.character, shin, JPH::Vec3(0.0F, 0.3F, 0.05F),
+                             JPH::Vec3(0.0F, 2.0F, -8.0F));
+        } else if (step == 30) {
+            chain.world.push(chain.character, shin, JPH::Vec3(0.1F, 0.0F, 0.0F),
+                             JPH::Vec3(-6.0F, 0.0F, 0.0F));
+        }
+    };
+
+    for (int step = 0; step < 60; ++step) {
+        push(first, step);
+        push(second, step);
+        first.world.step();
+        second.world.step();
+        REQUIRE(first.world.state_hash() == second.world.state_hash());
+    }
+}
+
+TEST_CASE("a push to a character removed before the next step is dropped", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir chain = chain_in_air(services);
+    const auto other = chain.world.add_character(chain_rig(), {});
+    REQUIRE(other.has_value());
+    ChainInAir unpushed = chain_in_air(services);
+    REQUIRE(unpushed.world.add_character(chain_rig(), {}).has_value());
+    unpushed.world.remove_character(unpushed.character);
+
+    chain.world.push(chain.character, pelvis, pelvis_position(chain), JPH::Vec3(20.0F, 0.0F, 0.0F));
+    chain.world.remove_character(chain.character);
+    chain.world.step();
+    unpushed.world.step();
+
+    CHECK(chain.world.state_hash() == unpushed.world.state_hash());
 }

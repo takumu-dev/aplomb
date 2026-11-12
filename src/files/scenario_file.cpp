@@ -108,7 +108,7 @@ class ScenarioFileReader {
             scenario.initial = read_initial(*initial);
         }
         if (const std::optional<Field> timeline = root->take("timeline")) {
-            read_timeline(*timeline);
+            scenario.timeline = read_timeline(*timeline);
         }
         if (const std::optional<Field> metrics = root->take("metrics")) {
             scenario.metrics = read_metrics(*metrics);
@@ -144,24 +144,39 @@ class ScenarioFileReader {
         return initial;
     }
 
-    // Version 1 knows no messages, so every entry of a timeline is reported. An entry whose
-    // message isn't known can't have its other keys checked, so its reader doesn't finish.
-    void read_timeline(const Field& field) {
+    // Version 1 knows one message, a push. An entry whose message isn't known can't have its other
+    // keys checked, so its reader doesn't finish.
+    std::vector<TimelinePush> read_timeline(const Field& field) {
+        std::vector<TimelinePush> timeline;
         for (const Field& entry : detail::read_array(field, file_).value_or({})) {
             std::optional<detail::ObjectReader> reader =
                 detail::read_object(entry, "timeline entry", file_);
             if (!reader.has_value()) {
                 continue;
             }
-            std::ignore = reader->take("t").and_then(
-                [&](const Field& time) { return detail::read_number(time, file_); });
-            if (const std::optional<Field> message = reader->take("message")) {
-                if (const std::optional<std::string> name = detail::read_string(*message, file_)) {
-                    file_.get().report_at(*message, FileProblemCode::invalid_value,
-                                          std::format(R"(there is no message "{}")", *name));
-                }
+            TimelinePush push;
+            detail::read_into(reader->take("t"), push.time, detail::read_number, file_);
+            const std::optional<Field> message = reader->take("message");
+            if (!message.has_value()) {
+                continue;
             }
+            const std::optional<std::string> name = detail::read_string(*message, file_);
+            if (name != "push") {
+                if (name.has_value()) {
+                    file_.get().report_at(
+                        *message, FileProblemCode::invalid_value,
+                        std::format(R"(the message of a timeline entry is "push", not "{}")",
+                                    *name));
+                }
+                continue;
+            }
+            detail::read_into(reader->take("part"), push.part, detail::read_string, file_);
+            detail::read_into(reader->take("point"), push.point, detail::read_vector, file_);
+            detail::read_into(reader->take("impulse"), push.impulse, detail::read_vector, file_);
+            reader->finish();
+            timeline.push_back(std::move(push));
         }
+        return timeline;
     }
 
     std::vector<Metric> read_metrics(const Field& field) {
@@ -284,6 +299,21 @@ void check_meaning(const ScenarioDesc& scenario, const pedantjson::Document& doc
         report(root / "duration_s",
                std::format("the duration must be a positive, finite number of seconds, not {}",
                            scenario.duration));
+    }
+    for (const auto [index, push] : std::views::enumerate(scenario.timeline)) {
+        const pedantjson::Pointer entry = root / "timeline" / static_cast<std::size_t>(index);
+        if (push.part.empty()) {
+            report(entry / "part", "the part pushed must be the name of a part, not empty");
+        }
+        if (push.time < 0.0F) {
+            report(entry / "t",
+                   std::format("a push's time must be at least 0 s, not {} s", push.time));
+        } else if (duration_valid && push.time >= scenario.duration) {
+            // A push sent at the end of the run would never take effect.
+            report(entry / "t",
+                   std::format("a push's time must be less than the duration of {} s, not {} s",
+                               scenario.duration, push.time));
+        }
     }
     for (const auto [index, metric] : std::views::enumerate(scenario.metrics)) {
         if (metric == Metric::max_speed_after_3s && duration_valid &&

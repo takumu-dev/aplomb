@@ -12,6 +12,8 @@
 #include <aplomb/core/world_settings.hpp>
 
 #include <Jolt/Core/Factory.h>
+#include <Jolt/Math/Vec3.h>
+#include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/PhysicsMaterial.h>
 #include <Jolt/Physics/StateRecorder.h>
@@ -25,6 +27,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <tuple>
 #include <utility>
 #include <vector>
 
@@ -128,6 +131,14 @@ class StateHasher final : public JPH::StateRecorder {
     std::uint64_t hash_ = offset_basis;
 };
 
+// A push message, as a world holds it until its next step.
+struct Push {
+    CharacterId character;
+    PartId part;
+    JPH::Vec3 world_point;
+    JPH::Vec3 impulse;
+};
+
 } // namespace
 
 // The physics system keeps pointers to the layer filters, so the state never moves once made. The
@@ -144,6 +155,8 @@ struct World::State {
     // given to another. Each character lives apart from the table, so that adding another doesn't
     // move it from under a host's reference.
     std::vector<std::unique_ptr<Character>> characters;
+    // The pushes sent since the last step, in the order they were sent.
+    std::vector<Push> pushes;
 };
 
 std::expected<World, WorldError> World::create(const WorldSettings& settings) {
@@ -187,6 +200,16 @@ World::~World() = default;
 
 void World::step() {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    JPH::BodyInterface& body_interface = state_->physics_system.GetBodyInterface();
+    for (const Push& push : state_->pushes) {
+        if (const std::unique_ptr<Character>& character =
+                state_->characters[push.character.index()];
+            character != nullptr) {
+            body_interface.AddImpulse(character->part_body(push.part), push.impulse,
+                                      push.world_point);
+        }
+    }
+    state_->pushes.clear();
     constexpr int collision_steps = 1;
     const JPH::EPhysicsUpdateError errors = state_->physics_system.Update(
         state_->step_duration, collision_steps, state_->temp_allocator, state_->job_system);
@@ -199,7 +222,7 @@ void World::step() {
     }
     for (const std::unique_ptr<Character>& character : state_->characters) {
         if (character != nullptr) {
-            character->update_physics_pose(state_->physics_system.GetBodyInterface());
+            character->update_physics_pose(body_interface);
         }
     }
 }
@@ -225,6 +248,14 @@ void World::remove_character(CharacterId character) {
     std::unique_ptr<Character>& found = state_->characters[character.index()];
     APLOMB_ASSERT(found != nullptr, "the character is one of the world's characters");
     found.reset();
+}
+
+void World::push(CharacterId character, PartId part, JPH::Vec3 world_point, JPH::Vec3 impulse) {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    // Reaching the part checks that the character and the part exist.
+    std::ignore = this->character(character).part_body(part);
+    state_->pushes.push_back(
+        {.character = character, .part = part, .world_point = world_point, .impulse = impulse});
 }
 
 const Character& World::character(CharacterId character) const {

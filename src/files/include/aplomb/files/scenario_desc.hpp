@@ -98,8 +98,25 @@ struct InitialState {
     InitialPose pose = InitialPose::bind;
 };
 
-/// A test that opens no window: a character made from a rig file, dropped into a scene, run for a
-/// while, with the metrics to record and the values they must reach.
+/// A push that a scenario's timeline sends to its character.
+struct TimelinePush {
+    /// How far into the run the push is sent, in seconds. It is sent after the whole number of
+    /// steps nearest that, or before the run's last step if that is nearer, and takes effect at the
+    /// start of the next.
+    float time = 0.0F;
+
+    /// The name of the part pushed.
+    std::string part{};
+
+    /// Where the impulse is applied, in the part's space as it is when the push is sent.
+    JPH::Vec3 point = JPH::Vec3::sZero();
+
+    /// The impulse, in newton seconds, in the world.
+    JPH::Vec3 impulse = JPH::Vec3::sZero();
+};
+
+/// A test that opens no window: a character made from a rig file, dropped into a scene and run for
+/// a while, with a timeline of pushes, the metrics to record and the values they must reach.
 ///
 /// A scenario has no step rate: whoever runs it chooses one, so that one scenario serves every
 /// rate.
@@ -122,6 +139,10 @@ struct ScenarioDesc {
 
     /// How the character starts.
     InitialState initial{};
+
+    /// The pushes sent to the character, in the order the file lists them. Each is sent before the
+    /// end of the run, so that it takes effect.
+    std::vector<TimelinePush> timeline{};
 
     /// The metrics the run records, each once, in the order the file lists them.
     std::vector<Metric> metrics{};

@@ -13,6 +13,7 @@
 
 #include <Jolt/Jolt.h>
 
+#include <Jolt/Math/Vec3.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 
 #include <cstdint>
@@ -49,8 +50,9 @@ class World {
     /// Destroys the world and its physics system, with every body in it.
     ~World();
 
-    /// Advances the world by one fixed step, stepping its physics system once, then reads each
-    /// character's physics pose.
+    /// Advances the world by one fixed step: applies the pushes sent since the last step, in the
+    /// order they were sent, steps its physics system once, then reads each character's physics
+    /// pose.
     void step();
 
     /// Adds a character made from a rig, in the rig's bind pose, as a passive ragdoll.
@@ -68,6 +70,18 @@ class World {
     ///
     /// \param character A character of this world.
     void remove_character(CharacterId character);
+
+    /// Pushes one of a character's parts with an impulse at a point, by a push message.
+    ///
+    /// The push takes effect at the start of the next step, after every push sent before it, so
+    /// that the same pushes sent in the same order always give the same state. A push to a
+    /// character that is removed before then is dropped.
+    ///
+    /// \param character A character of this world.
+    /// \param part A part of the character's rig.
+    /// \param world_point Where the impulse is applied, in the world.
+    /// \param impulse The impulse, in newton seconds.
+    void push(CharacterId character, PartId part, JPH::Vec3 world_point, JPH::Vec3 impulse);
 
     /// One of the world's characters. The reference holds until the character is removed or the
     /// world is destroyed.

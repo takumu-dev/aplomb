@@ -5,11 +5,15 @@
 #include "required.hpp"
 #include "rigs.hpp"
 #include <aplomb/core/rig_desc.hpp>
+#include <aplomb/core/typed_id.hpp>
+#include <aplomb/core/world.hpp>
 #include <aplomb/files/metrics_file.hpp>
 #include <aplomb/files/scenario_desc.hpp>
+#include <aplomb/scenes/flat_ground.hpp>
 
 #include <Jolt/Jolt.h>
 
+#include <Jolt/Math/Quat.h>
 #include <Jolt/Math/Vec3.h>
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_test_macros.hpp>
@@ -35,6 +39,11 @@ aplomb::ScenarioDesc chain_drop() {
         .duration = 3.0F,
         .initial = {.root_position = JPH::Vec3(0.0F, 0.2F, 0.0F)},
     };
+}
+
+// A push of the chain's pelvis along +X, at its centre.
+aplomb::TimelinePush pelvis_push(float time) {
+    return {.time = time, .part = "pelvis", .impulse = JPH::Vec3(20.0F, 0.0F, 0.0F)};
 }
 
 std::string error_of(const std::expected<RunResult, RunError>& result) {
@@ -234,4 +243,119 @@ TEST_CASE("the first differing step of two runs is the first at which their stat
     const aplomb::StateHashDifference& difference = required(found);
     CHECK(difference.step == 2);
     CHECK(difference.state_hashes == std::array<std::uint64_t, 2>{3, 30});
+}
+
+TEST_CASE("a run sends each push of its timeline after the whole number of steps nearest its time",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ScenarioDesc pushed = chain_drop();
+    pushed.timeline = {pelvis_push(0.5F)};
+
+    const auto with_push = run_scenario(pushed, chain_rig(), 60.0F, services);
+    const auto without = run_scenario(chain_drop(), chain_rig(), 60.0F, services);
+
+    INFO(error_of(with_push));
+    REQUIRE(with_push.has_value());
+    REQUIRE(without.has_value());
+    // Sent after 30 steps, the push takes effect at the 31st.
+    const std::optional<aplomb::StateHashDifference> difference =
+        first_differing_step(with_push->state_hashes, without->state_hashes);
+    CHECK(required(difference).step == 31);
+}
+
+TEST_CASE("a run sends its timeline's pushes in the order of their times, whatever the order "
+          "they are listed in",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::TimelinePush later = pelvis_push(1.0F);
+    later.part = "shin";
+    later.impulse = JPH::Vec3(0.0F, 0.0F, -6.0F);
+    aplomb::ScenarioDesc in_order = chain_drop();
+    in_order.timeline = {pelvis_push(0.5F), later};
+    aplomb::ScenarioDesc out_of_order = chain_drop();
+    out_of_order.timeline = {later, pelvis_push(0.5F)};
+
+    const auto first = run_scenario(in_order, chain_rig(), 60.0F, services);
+    const auto second = run_scenario(out_of_order, chain_rig(), 60.0F, services);
+
+    INFO(error_of(first));
+    REQUIRE(first.has_value());
+    REQUIRE(second.has_value());
+    CHECK(first->state_hashes == second->state_hashes);
+}
+
+TEST_CASE("a timeline push is applied at its point in the part's space, as the part is when the "
+          "push is sent",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    // The pelvis turned a half turn about Z, which takes its +Y to the world's -Y exactly.
+    aplomb::RigDesc rig = chain_rig();
+    rig.parts[0].bind_rotation = JPH::Quat(0.0F, 0.0F, 1.0F, 0.0F);
+    aplomb::ScenarioDesc scenario = chain_drop();
+    aplomb::TimelinePush push = pelvis_push(0.0F);
+    push.point = JPH::Vec3(0.0F, 0.1F, 0.0F);
+    scenario.timeline = {push};
+
+    const auto result = run_scenario(scenario, rig, 60.0F, services);
+
+    INFO(error_of(result));
+    REQUIRE(result.has_value());
+    // The same run, with the push sent to the world by hand before the first step, while the
+    // pelvis is in its bind pose: 0.95 m up in the rig, 0.2 m up in the world.
+    auto world = aplomb::World::create(services.world_settings());
+    REQUIRE(world.has_value());
+    aplomb::build_flat_ground(world->physics_system());
+    const JPH::Vec3 root = scenario.initial.root_position;
+    const auto character = world->add_character(rig, {.position = root});
+    REQUIRE(character.has_value());
+    world->push(*character, aplomb::PartId(0),
+                root + JPH::Vec3(0.0F, 0.95F, 0.0F) + JPH::Vec3(0.0F, -0.1F, 0.0F), push.impulse);
+    for (std::uint64_t step = 1; step <= result->steps; ++step) {
+        world->step();
+        INFO("step " << step);
+        REQUIRE(world->state_hash() == result->state_hashes[step]);
+    }
+}
+
+TEST_CASE("a scenario that pushes a part its rig doesn't have can't run, and the error names the "
+          "part",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ScenarioDesc scenario = chain_drop();
+    aplomb::TimelinePush push = pelvis_push(0.5F);
+    push.part = "chest";
+    scenario.timeline = {push};
+
+    const auto result = run_scenario(scenario, chain_rig(), 60.0F, services);
+
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().code == RunErrorCode::unknown_part);
+    CHECK(std::format("{}", result.error()) ==
+          R"(the timeline pushes the part "chest", which the rig "chain" doesn't have)");
+}
+
+TEST_CASE("a push within half a step of the end of its run is sent before the last step",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ScenarioDesc pushed = chain_drop();
+    pushed.duration = 1.0F;
+    // 59.7 steps into a run of 60, which is nearest the 60th, after which nothing is sent.
+    pushed.timeline = {pelvis_push(0.995F)};
+    aplomb::ScenarioDesc unpushed = chain_drop();
+    unpushed.duration = 1.0F;
+
+    const auto with_push = run_scenario(pushed, chain_rig(), 60.0F, services);
+    const auto without = run_scenario(unpushed, chain_rig(), 60.0F, services);
+
+    INFO(error_of(with_push));
+    REQUIRE(with_push.has_value());
+    REQUIRE(without.has_value());
+    const std::optional<aplomb::StateHashDifference> difference =
+        first_differing_step(with_push->state_hashes, without->state_hashes);
+    CHECK(required(difference).step == 60);
 }
