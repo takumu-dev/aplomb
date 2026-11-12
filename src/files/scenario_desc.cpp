@@ -10,6 +10,8 @@ std::string_view metric_name(Metric metric) noexcept {
         return "max_speed_after_3s";
     case Metric::nan_count:
         return "nan_count";
+    case Metric::state_hash_final:
+        return "state_hash_final";
     }
     // Only a metric cast from outside the enumeration gets here.
     return "unknown";

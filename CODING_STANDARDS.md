@@ -80,6 +80,19 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
 - Randomness comes from a generator seeded through the world, never from the wall clock or a
   `std::random_device`.
 
+A world's state hash, `World::state_hash()`, is one number for its whole physical state, so two
+runs are compared step by step. Every scenario has a golden hash at each step rate it runs at: the
+state hash its run must end with, one to a file in `tests/golden/`.
+
+- Golden hashes are recorded on Linux x86-64 with `linux-clang-release`, and checked by the presets
+  that turn `APLOMB_GOLDEN_HASHES` on: `linux-clang-release`, on x86-64 and ARM64 alike.
+- Only `cmake --build --preset linux-clang-release --target golden-hashes` makes them, recording
+  every scenario's afresh and removing those of scenarios that are gone. It writes nothing unless
+  every scenario passes and records `state_hash_final`.
+- Golden hashes that change go in a commit of their own, whose message says why the physics
+  changed, so that no change to them goes unseen in review. A change that alters them commits its
+  code first, then the regenerated golden hashes.
+
 ## Naming and spelling
 
 - `PascalCase` for types, concepts, type aliases and template parameters.
@@ -225,7 +238,8 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
   test case's name must not begin with `-`, which Catch2 would read as one of its options.
 - `tests/` mirrors `src/`. `tests/runner/` holds the scenario runner, with its tests, named
   `runner:`, and `tests/scenarios/` the scenario files it runs at 60 Hz and 120 Hz with the tests,
-  named `scenarios:`, each run writing a metrics file to `metrics/` in the build directory.
+  named `scenarios:`, each run writing a metrics file to `metrics/` in the build directory, which
+  every CI job keeps. `tests/golden/` holds the scenarios' golden hashes.
   `tests/build/` holds tests of the build itself, named `build:`, and
   `tests/support/` holds what the tests share: Jolt's process-wide
   setup as a host does it, the job system and temporary allocator a host lends a world, with a fixed
@@ -243,7 +257,9 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
   - `aplomb_add_compile_failure_test` adds a source built with the library's settings that must
     fail to compile, and for the reason the test names.
   - `aplomb_add_scenario_test` adds a scenario file of `tests/scenarios/`, which `aplomb_runner`
-    runs at 60 Hz and at 120 Hz.
+    runs at 60 Hz and at 120 Hz, checking its golden hash where `APLOMB_GOLDEN_HASHES` is on. With
+    `DETERMINISM`, it runs the scenario twice at each rate, and fails naming the first step at
+    which the two runs' state hashes differ.
   - `aplomb_add_script_test` adds a CMake script that tests the build's own CMake code, such as
     the licence check on the fake vcpkg trees of `tests/build/licenses/`, through
     `tests/support/check_program.cmake` too.

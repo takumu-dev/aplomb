@@ -151,6 +151,10 @@ jobs:
           steps:
             - store_test_results:
                 path: build/<< parameters.preset >>/junit.xml
+            # A failed run's file still names the first step at which two runs differed.
+            - store_artifacts:
+                path: build/<< parameters.preset >>/metrics
+                destination: metrics
       - store_artifacts:
           path: build/<< parameters.preset >>/vcpkg-manifest-install.log
           destination: vcpkg-manifest-install.log

@@ -23,15 +23,21 @@ add_executable(aplomb_runner main.cpp)
 target_link_libraries(aplomb_runner PRIVATE aplomb_runner_support)
 aplomb_target_warnings(aplomb_runner)
 
-# Runs the runner on one of the scenarios in scenarios/, which test how it fails, at 60 Hz.
+# Runs the runner on one of the scenarios in scenarios/, which test how it runs and fails, at
+# 60 Hz.
 #
-#   SCENARIO  the scenario file's stem
-#   METRICS   where the metrics file goes, if anywhere in particular
+#   SCENARIO   the scenario file's stem
+#   MODE       how the runner runs it, `run` by default
+#   METRICS    where the metrics file goes, if anywhere in particular
+#   ARGUMENTS  the runner's further arguments, as a list
 #   EXPECTED_RESULT, STDOUT_MATCHES, STDERR_MATCHES
-#             passed to aplomb_add_program_test
+#              passed to aplomb_add_program_test
 function(aplomb_add_runner_test description)
     set(checks EXPECTED_RESULT STDOUT_MATCHES STDERR_MATCHES)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "" "SCENARIO;METRICS;${checks}" "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "SCENARIO;MODE;METRICS;${checks}" "ARGUMENTS")
+    if(NOT DEFINED arg_MODE)
+        set(arg_MODE run)
+    endif()
     if(NOT DEFINED arg_METRICS)
         set(arg_METRICS "${CMAKE_CURRENT_BINARY_DIR}/${arg_SCENARIO}.json")
     endif()
@@ -43,8 +49,8 @@ function(aplomb_add_runner_test description)
     endforeach()
     aplomb_add_program_test(runner "${description}"
         PROGRAM aplomb_runner
-        ARGUMENTS run "${CMAKE_CURRENT_SOURCE_DIR}/scenarios/${arg_SCENARIO}.json"
-            --step-rate 60 --metrics "${arg_METRICS}"
+        ARGUMENTS ${arg_MODE} "${CMAKE_CURRENT_SOURCE_DIR}/scenarios/${arg_SCENARIO}.json"
+            --step-rate 60 --metrics "${arg_METRICS}" ${arg_ARGUMENTS}
         ${options}
     )
 endfunction()
@@ -111,4 +117,41 @@ add_test(NAME "runner: a failed run still writes its metrics file"
 )
 set_tests_properties("runner: a failed run still writes its metrics file"
     PROPERTIES FIXTURES_REQUIRED runner_missed_criterion
+)
+
+aplomb_add_runner_test("a run whose final state hash differs from its golden hash fails, naming both"
+    SCENARIO short_drop
+    METRICS "${CMAKE_CURRENT_BINARY_DIR}/golden_hash_differs.json"
+    ARGUMENTS --golden-hash 0000000000000000
+    EXPECTED_RESULT 1
+    STDOUT_MATCHES
+        "state_hash_final [0-9a-f]+ differs from the golden hash 0000000000000000\nfailed\n$"
+)
+foreach(hash IN ITEMS 123 0x0123456789abcde 0123456789abcdef0 0123456789abcdeg -123456789abcdef)
+    aplomb_add_runner_test("the runner refuses a golden hash of ${hash}"
+        SCENARIO short_drop
+        METRICS "${CMAKE_CURRENT_BINARY_DIR}/refused.json"
+        ARGUMENTS --golden-hash ${hash}
+        EXPECTED_RESULT 2
+        STDERR_MATCHES "the golden hash must be 16 hexadecimal digits, not \"${hash}\""
+    )
+endforeach()
+aplomb_add_runner_test("the runner's determinism mode passes a scenario whose two runs agree"
+    SCENARIO short_drop
+    MODE determinism
+    METRICS "${CMAKE_CURRENT_BINARY_DIR}/determinism.json"
+    EXPECTED_RESULT 0
+    STDOUT_MATCHES
+        "both runs gave the same state hash before the first step and after each of 60\npassed\n$"
+)
+# Records a golden hash the way the golden-hashes target does, into a directory of its own, then
+# checks that the run it came from meets it.
+add_test(NAME "runner: a run meets the golden hash recorded from it"
+    COMMAND "${CMAKE_COMMAND}"
+        "-DRUNNER=$<TARGET_FILE:aplomb_runner>"
+        "-DSCENARIO_DIR=${CMAKE_CURRENT_SOURCE_DIR}/scenarios"
+        -DSCENARIO=short_drop
+        "-DWORK_DIR=${CMAKE_CURRENT_BINARY_DIR}/recorded_golden_hash"
+        "-DRECORDER=${CMAKE_CURRENT_SOURCE_DIR}/record_golden_hashes.cmake"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/check_recorded_golden_hash.cmake"
 )

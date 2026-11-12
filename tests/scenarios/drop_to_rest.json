@@ -8,7 +8,7 @@
   "seed": 1,
   "initial": {"root_position": [0, 0.2, 0], "pose": "bind"},
   "timeline": [],
-  "metrics": ["max_speed_after_3s", "nan_count"],
+  "metrics": ["max_speed_after_3s", "nan_count", "state_hash_final"],
   "pass": {
     "max_speed_after_3s": {"lt": 0.01},
     "nan_count": {"eq": 0}

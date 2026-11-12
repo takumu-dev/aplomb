@@ -5,6 +5,7 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -66,6 +67,50 @@ TEST_CASE(
   }
 }
 )");
+}
+
+TEST_CASE("a metrics file gives a state hash as a string of 16 hexadecimal digits", "[files]") {
+    const aplomb::RunMetrics metrics{
+        .scenario = "drop",
+        .step_rate = 60.0F,
+        .values =
+            {
+                {.metric = aplomb::Metric::nan_count, .value = 0.0},
+                {.metric = aplomb::Metric::state_hash_final, .value = std::uint64_t{0xbad5eed}},
+            },
+    };
+
+    CHECK(aplomb::write_metrics_file(metrics).ends_with(R"(  "metrics": {
+    "nan_count": 0,
+    "state_hash_final": "000000000bad5eed"
+  }
+}
+)"));
+}
+
+TEST_CASE("a metrics file gives the first step at which two runs' state hashes differed, with both "
+          "hashes",
+          "[files]") {
+    const aplomb::RunMetrics metrics{
+        .scenario = "drop",
+        .step_rate = 60.0F,
+        .first_differing_step =
+            aplomb::StateHashDifference{
+                .step = 41,
+                .state_hashes = {0x0123456789abcdef, 0xfedcba9876543210},
+            },
+    };
+
+    CHECK(aplomb::write_metrics_file(metrics).ends_with(R"(  "metrics": {},
+  "first_differing_step": {
+    "step": 41,
+    "state_hashes": [
+      "0123456789abcdef",
+      "fedcba9876543210"
+    ]
+  }
+}
+)"));
 }
 
 TEST_CASE("a metrics file of no metrics has an empty object of them", "[files]") {

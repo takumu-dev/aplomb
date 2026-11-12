@@ -79,18 +79,58 @@ function(aplomb_add_program_test name description)
     )
 endfunction()
 
-# Adds the tests of a scenario file in tests/scenarios/: a run of it by aplomb_runner at 60 Hz, and
-# one at 120 Hz. Each run writes its metrics file to metrics/ in the build directory, named after
-# the scenario and the step rate.
+# The step rates every scenario runs at, and where their golden hashes are kept, each in a file
+# named after the scenario and the step rate. Golden hashes are recorded on Linux x86-64 in
+# release, so only the presets of builds that must give the same hashes check them.
+set(APLOMB_SCENARIO_STEP_RATES 60 120)
+set(APLOMB_GOLDEN_DIR "${CMAKE_CURRENT_SOURCE_DIR}/golden")
+option(APLOMB_GOLDEN_HASHES "Check each scenario's final state hash against its golden hash." OFF)
+if(APLOMB_GOLDEN_HASHES AND EXISTS "${APLOMB_GOLDEN_DIR}")
+    # So that a golden hash recorded where there was none is checked from the next build on.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${APLOMB_GOLDEN_DIR}")
+endif()
+
+# Adds the tests of a scenario file in tests/scenarios/: a run of it by aplomb_runner at each of
+# the step rates. Each run writes its metrics file to metrics/ in the build directory, named after
+# the scenario and the step rate. Where APLOMB_GOLDEN_HASHES is on, each run's final state hash
+# must be its golden hash, and a scenario without one fails until the golden-hashes target records
+# it.
 #
-#   SCENARIO  the scenario file's stem
+#   SCENARIO     the scenario file's stem
+#   DETERMINISM  run it twice at each step rate, failing where the two runs' state hashes differ
+#                at any step
 function(aplomb_add_scenario_test scenario)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "DETERMINISM" "" "")
+    set(mode run)
+    if(arg_DETERMINISM)
+        set(mode determinism)
+    endif()
+    set_property(GLOBAL APPEND PROPERTY APLOMB_SCENARIOS ${scenario})
     set(metrics_dir "${PROJECT_BINARY_DIR}/metrics")
     file(MAKE_DIRECTORY "${metrics_dir}")
-    foreach(rate IN ITEMS 60 120)
-        add_test(NAME "scenarios: ${scenario} at ${rate} Hz"
-            COMMAND aplomb_runner run "${PROJECT_SOURCE_DIR}/tests/scenarios/${scenario}.json"
+    foreach(rate IN LISTS APLOMB_SCENARIO_STEP_RATES)
+        set(name "scenarios: ${scenario} at ${rate} Hz")
+        set(golden_options "")
+        if(APLOMB_GOLDEN_HASHES)
+            set(golden "${APLOMB_GOLDEN_DIR}/${scenario}_${rate}hz.txt")
+            if(EXISTS "${golden}")
+                file(STRINGS "${golden}" golden_hash LIMIT_COUNT 1)
+                set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${golden}")
+                set(golden_options --golden-hash "${golden_hash}")
+            else()
+                add_test(NAME "${name} has a golden hash"
+                    COMMAND "${CMAKE_COMMAND}" -E echo "there is no golden hash at ${golden}; "
+                        "build the golden-hashes target to record it"
+                )
+                set_tests_properties("${name} has a golden hash" PROPERTIES
+                    FAIL_REGULAR_EXPRESSION "there is no golden hash"
+                )
+            endif()
+        endif()
+        add_test(NAME "${name}"
+            COMMAND aplomb_runner ${mode} "${PROJECT_SOURCE_DIR}/tests/scenarios/${scenario}.json"
                 --step-rate ${rate} --metrics "${metrics_dir}/${scenario}_${rate}hz.json"
+                ${golden_options}
         )
     endforeach()
 endfunction()
@@ -179,3 +219,22 @@ add_subdirectory(scenes)
 add_subdirectory(runner)
 add_subdirectory(scenarios)
 add_subdirectory(build)
+
+# Records every scenario's golden hash at every step rate in golden/, replacing what is there: the
+# only way golden hashes are made. They are recorded on Linux x86-64 with linux-clang-release.
+get_property(scenarios GLOBAL PROPERTY APLOMB_SCENARIOS)
+list(JOIN scenarios "$<SEMICOLON>" scenarios)
+list(JOIN APLOMB_SCENARIO_STEP_RATES "$<SEMICOLON>" step_rates)
+add_custom_target(golden-hashes
+    COMMAND "${CMAKE_COMMAND}"
+        "-DRUNNER=$<TARGET_FILE:aplomb_runner>"
+        "-DSCENARIO_DIR=${CMAKE_CURRENT_SOURCE_DIR}/scenarios"
+        "-DSCENARIOS=${scenarios}"
+        "-DSTEP_RATES=${step_rates}"
+        "-DGOLDEN_DIR=${APLOMB_GOLDEN_DIR}"
+        "-DMETRICS_DIR=${PROJECT_BINARY_DIR}/metrics"
+        -P "${CMAKE_CURRENT_SOURCE_DIR}/runner/record_golden_hashes.cmake"
+    COMMENT "Recording every scenario's golden hashes"
+    VERBATIM
+)
+add_dependencies(golden-hashes aplomb_runner)

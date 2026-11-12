@@ -27,6 +27,10 @@ enum class Metric : std::uint8_t {
     /// How many NaN values the parts' positions, rotations and linear and angular velocities hold,
     /// summed over every step.
     nan_count,
+
+    /// The world's state hash after the last step. A golden hash checks it, rather than a pass
+    /// criterion.
+    state_hash_final,
 };
 
 /// The name of a metric, as files give it, such as `nan_count`.

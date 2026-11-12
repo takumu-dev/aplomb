@@ -41,7 +41,8 @@ class MetricRecorder {
     void record(std::span<const PartState> parts);
 
     /// A metric's value over the steps recorded so far. max_speed_after_3s is NaN until the step
-    /// nearest 3 s into the run has been recorded.
+    /// nearest 3 s into the run has been recorded, and state_hash_final, which isn't measured from
+    /// the parts, is always NaN.
     [[nodiscard]] double value(aplomb::Metric metric) const;
 
   private:

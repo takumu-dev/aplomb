@@ -9,11 +9,15 @@
 #include <pedantjson/pedantjson.hpp>
 
 #include <cmath>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
+#include <format>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <variant>
 
 namespace aplomb {
 
@@ -26,12 +30,21 @@ template <typename T> pedantjson::Draft finite_or_null(T number) {
     return std::isfinite(number) ? pedantjson::Draft(number) : pedantjson::Draft(nullptr);
 }
 
+pedantjson::Draft state_hash(std::uint64_t hash) { return std::format("{:016x}", hash); }
+
+pedantjson::Draft metric_value(const std::variant<double, std::uint64_t>& value) {
+    if (const auto* const hash = std::get_if<std::uint64_t>(&value)) {
+        return state_hash(*hash);
+    }
+    return finite_or_null(std::get<double>(value));
+}
+
 } // namespace
 
 std::string write_metrics_file(const RunMetrics& metrics) {
     pedantjson::Draft values = pedantjson::Draft::object();
     for (const MetricValue& value : metrics.values) {
-        values.append(std::string(metric_name(value.metric)), finite_or_null(value.value));
+        values.append(std::string(metric_name(value.metric)), metric_value(value.value));
     }
     pedantjson::Draft root = pedantjson::Draft::object();
     root.append("format", "aplomb.metrics")
@@ -39,6 +52,15 @@ std::string write_metrics_file(const RunMetrics& metrics) {
         .append("scenario", metrics.scenario)
         .append("step_rate", finite_or_null(metrics.step_rate))
         .append("metrics", std::move(values));
+    if (const std::optional<StateHashDifference>& difference = metrics.first_differing_step) {
+        pedantjson::Draft hashes = pedantjson::Draft::array();
+        for (const std::uint64_t hash : difference->state_hashes) {
+            hashes.append(state_hash(hash));
+        }
+        pedantjson::Draft step = pedantjson::Draft::object();
+        step.append("step", difference->step).append("state_hashes", std::move(hashes));
+        root.append("first_differing_step", std::move(step));
+    }
     // Every number is finite by now, and every name but the scenario's is aplomb's own, so the
     // scenario's name is all that can stop the file being written.
     std::expected<std::string, pedantjson::WriteError> text = detail::write_json(root);

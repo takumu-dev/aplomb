@@ -83,6 +83,8 @@ double MetricRecorder::value(aplomb::Metric metric) const {
                                              : std::numeric_limits<double>::quiet_NaN();
     case aplomb::Metric::nan_count:
         return static_cast<double>(nan_count_);
+    case aplomb::Metric::state_hash_final:
+        break;
     }
     return std::numeric_limits<double>::quiet_NaN();
 }
