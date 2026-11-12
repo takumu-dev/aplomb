@@ -1,13 +1,13 @@
-# pedantjson, the strict JSON reader that aplomb::files reads rig files with, as its own repository's
-# port builds it, until vcpkg's registry carries it. The port tracks pedantjson's releases: moving to
-# another changes the version and the hash, in a commit of its own.
+# pedantjson, the strict JSON parser and writer that aplomb::files reads and writes its files
+# with, as its own repository's port builds it, until vcpkg's registry carries it. The port tracks
+# pedantjson's releases: moving to another changes the version and the hash, in a commit of its own.
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO takumu-dev/pedantjson
     REF "${VERSION}"
-    SHA512 7212490a2eeea5f1691fe2d9a5a149ed205df0efffa610a8b0c679a3502f314ba2997cd657d6ab2f2d0bccdcf69308c555ebc39fd59b2c59ff7a21e4208e1626
+    SHA512 33ca4eac56bf8ddaa9942d469556df23e461a122f99525914638e0d73f90d349adaacf29f241c65d1a9a39f080c81a6074be5fc5d942e8b2e48a95e31800d3b4
     HEAD_REF develop
 )
 

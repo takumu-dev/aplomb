@@ -52,7 +52,7 @@ departs from them, it says so.
   `src/core/include/aplomb/core/`, and its private headers beside its sources.
 - `aplomb::files`, in `src/files/`, reads rig files into what the core takes, reads scenario files
   and writes metrics files, and is the only target that opens a file. It links the core, and
-  pedantjson privately, so that a host that builds its rigs in code never carries a JSON reader.
+  pedantjson privately, so that a host that builds its rigs in code never carries a JSON library.
 - `aplomb::scenes`, in `src/scenes/`, builds scenes in code, such as `flat_ground`, into a world's
   physics system, each also by the name a scenario file gives it. It links the core, and the
   library a host ships never depends on it.
