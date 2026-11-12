@@ -1,0 +1,13 @@
+{
+  "format": "aplomb.scenario",
+  "version": 1,
+  "name": "unknown_scene",
+  "rig": "../../../assets/rigs/humanoid.json",
+  "scene": "moon",
+  "duration_s": 3,
+  "seed": 1,
+  "initial": {"root_position": [0, 0.2, 0], "pose": "bind"},
+  "timeline": [],
+  "metrics": [],
+  "pass": {}
+}

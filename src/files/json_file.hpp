@@ -3,6 +3,9 @@
 #include <aplomb/core/rig_problem.hpp>
 #include <aplomb/files/file_problem.hpp>
 
+#include <Jolt/Jolt.h>
+
+#include <Jolt/Math/Vec3.h>
 #include <pedantjson/pedantjson.hpp>
 
 #include <array>
@@ -159,6 +162,36 @@ class ObjectReader {
 /// \return The number, or nothing if the value isn't one or no float holds it, which is reported.
 [[nodiscard]] std::optional<float> read_number(const Field& field, JsonFile& file);
 
+/// Reports a value of the wrong kind.
+///
+/// \param field The value.
+/// \param expected The kind it should have been, with its article, such as `a number`.
+/// \param file The file.
+void report_wrong_type(const Field& field, std::string_view expected, JsonFile& file);
+
+/// Reads a number as the double nearest it.
+///
+/// \param field The value.
+/// \param file The file.
+/// \return The number, or nothing if the value isn't one or no double holds it, which is reported.
+[[nodiscard]] std::optional<double> read_double(const Field& field, JsonFile& file);
+
+/// Reads a field's value into `out`, if the object has the field and its value reads. A value
+/// that doesn't read has been reported, and leaves `out` as it was.
+///
+/// \param field The field, or nothing if the object lacks it.
+/// \param out Where the value goes.
+/// \param read What reads the value, such as `read_string`.
+/// \param file The file.
+template <typename T, typename Read>
+void read_into(const std::optional<Field>& field, T& out, Read read, JsonFile& file) {
+    if (field.has_value()) {
+        if (auto value = read(*field, file)) {
+            out = std::move(*value);
+        }
+    }
+}
+
 /// Reads an array of a fixed number of numbers, reporting each element that isn't a number.
 ///
 /// \tparam Count How many numbers the array must have.
@@ -168,6 +201,13 @@ class ObjectReader {
 template <std::size_t Count>
 [[nodiscard]] std::optional<std::array<float, Count>> read_numbers(const Field& field,
                                                                    JsonFile& file);
+
+/// Reads an array of three numbers as a vector.
+///
+/// \param field The value.
+/// \param file The file.
+/// \return The vector, or nothing if any problem was reported.
+[[nodiscard]] std::optional<JPH::Vec3> read_vector(const Field& field, JsonFile& file);
 
 /// Reads the `format` and `version` keys of a file's root object, which every file of aplomb's has.
 ///

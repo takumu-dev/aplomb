@@ -1,6 +1,7 @@
 # aplomb: an active ragdoll library on Jolt Physics. aplomb::core holds the world and everything
 # that controls its characters, and links Jolt and the standard library alone. aplomb::files reads
-# rig files into what the core takes.
+# rig files into what the core takes, and reads scenario files and writes metrics files for the
+# scenario runner.
 #
 # Every supported build is a preset in CMakePresets.json, so a developer and CI run the same
 # `cmake --workflow --preset <preset>`. Dependencies come only through find_package; the build never

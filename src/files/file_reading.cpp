@@ -29,6 +29,15 @@ FileError unreadable(std::string_view kind, const std::filesystem::path& path,
     };
 }
 
+FileError unwritable(std::string_view kind, const std::filesystem::path& path,
+                     std::string_view reason) {
+    return {
+        .code = FileErrorCode::unwritable,
+        .message = std::format("the {} \"{}\" can't be written: {}", kind, path.string(), reason),
+        .problems = {},
+    };
+}
+
 } // namespace
 
 std::expected<std::string, FileError> read_text_file(const std::filesystem::path& path,
@@ -50,6 +59,20 @@ std::expected<std::string, FileError> read_text_file(const std::filesystem::path
         return std::unexpected(unreadable(kind, path, "reading it failed"));
     }
     return text;
+}
+
+std::expected<void, FileError> write_text_file(const std::filesystem::path& path,
+                                               std::string_view kind, std::string_view text) {
+    std::ofstream stream(path, std::ios::binary | std::ios::trunc);
+    if (!stream.is_open()) {
+        return std::unexpected(unwritable(kind, path, "it can't be opened"));
+    }
+    stream.write(text.data(), static_cast<std::streamsize>(text.size()));
+    stream.close();
+    if (stream.fail()) {
+        return std::unexpected(unwritable(kind, path, "writing it failed"));
+    }
+    return {};
 }
 
 FileError invalid_file(std::string_view kind, std::string_view path,

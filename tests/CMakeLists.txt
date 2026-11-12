@@ -46,12 +46,19 @@ endfunction()
 #
 #   SOURCE     the program's one source file
 #   LIBRARIES  what the program links
+#   PROGRAM    instead of SOURCE and LIBRARIES, a program target built elsewhere
 #   EXPECTED_RESULT, EXPECTED_STDERR, STDOUT_MATCHES, STDERR_MATCHES
 #              passed to the script, which describes them; ARGUMENTS too, as a list
 function(aplomb_add_program_test name description)
     set(checks EXPECTED_RESULT EXPECTED_STDERR STDOUT_MATCHES STDERR_MATCHES)
-    cmake_parse_arguments(PARSE_ARGV 2 arg "" "SOURCE;${checks}" "LIBRARIES;ARGUMENTS")
-    aplomb_add_test_program(program ${name} ${arg_SOURCE} ${arg_LIBRARIES})
+    cmake_parse_arguments(PARSE_ARGV 2 arg
+        "" "SOURCE;PROGRAM;${checks}" "LIBRARIES;ARGUMENTS"
+    )
+    if(DEFINED arg_PROGRAM)
+        set(program ${arg_PROGRAM})
+    else()
+        aplomb_add_test_program(program ${name} ${arg_SOURCE} ${arg_LIBRARIES})
+    endif()
     if(DEFINED arg_EXPECTED_STDERR)
         cmake_path(ABSOLUTE_PATH arg_EXPECTED_STDERR)
     endif()
@@ -70,6 +77,22 @@ function(aplomb_add_program_test name description)
     add_test(NAME "${name}: ${description}"
         COMMAND "${CMAKE_COMMAND}" ${options} -P "${APLOMB_TEST_SUPPORT_DIR}/check_program.cmake"
     )
+endfunction()
+
+# Adds the tests of a scenario file in tests/scenarios/: a run of it by aplomb_runner at 60 Hz, and
+# one at 120 Hz. Each run writes its metrics file to metrics/ in the build directory, named after
+# the scenario and the step rate.
+#
+#   SCENARIO  the scenario file's stem
+function(aplomb_add_scenario_test scenario)
+    set(metrics_dir "${PROJECT_BINARY_DIR}/metrics")
+    file(MAKE_DIRECTORY "${metrics_dir}")
+    foreach(rate IN ITEMS 60 120)
+        add_test(NAME "scenarios: ${scenario} at ${rate} Hz"
+            COMMAND aplomb_runner run "${PROJECT_SOURCE_DIR}/tests/scenarios/${scenario}.json"
+                --step-rate ${rate} --metrics "${metrics_dir}/${scenario}_${rate}hz.json"
+        )
+    endforeach()
 endfunction()
 
 # Adds a test of the build's own CMake code: a script, run through support/check_program.cmake,
@@ -153,4 +176,6 @@ endfunction()
 add_subdirectory(core)
 add_subdirectory(files)
 add_subdirectory(scenes)
+add_subdirectory(runner)
+add_subdirectory(scenarios)
 add_subdirectory(build)

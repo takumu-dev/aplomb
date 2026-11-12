@@ -18,6 +18,9 @@ enum class FileErrorCode : std::uint8_t {
     /// The file couldn't be opened or read.
     unreadable,
 
+    /// The file couldn't be created or written.
+    unwritable,
+
     /// The file has problems, which the error lists.
     invalid,
 };

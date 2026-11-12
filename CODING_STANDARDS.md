@@ -50,11 +50,12 @@ departs from them, it says so.
   world and everything that controls a character. Its parts stay directories inside it, not
   targets, since they run as one ordered step. Its public headers sit under
   `src/core/include/aplomb/core/`, and its private headers beside its sources.
-- `aplomb::files`, in `src/files/`, reads rig files into what the core takes, and is the only target
-  that opens a file. It links the core, and pedantjson privately, so that a host that builds its
-  rigs in code never carries a JSON reader.
+- `aplomb::files`, in `src/files/`, reads rig files into what the core takes, reads scenario files
+  and writes metrics files, and is the only target that opens a file. It links the core, and
+  pedantjson privately, so that a host that builds its rigs in code never carries a JSON reader.
 - `aplomb::scenes`, in `src/scenes/`, builds scenes in code, such as `flat_ground`, into a world's
-  physics system. It links the core, and the library a host ships never depends on it.
+  physics system, each also by the name a scenario file gives it. It links the core, and the
+  library a host ships never depends on it.
 - A target includes only the headers of what it links, since each public include tree comes only
   with its library. Jolt's types may appear in the core's public headers, since aplomb is built on
   Jolt alone.
@@ -222,7 +223,10 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
 - A test exercises a public interface only, and survives any refactoring that keeps the behaviour.
   Its name is a sentence saying what holds, such as "a world steps at the step rate it is given". A
   test case's name must not begin with `-`, which Catch2 would read as one of its options.
-- `tests/` mirrors `src/`, `tests/build/` holds tests of the build itself, named `build:`, and
+- `tests/` mirrors `src/`. `tests/runner/` holds the scenario runner, with its tests, named
+  `runner:`, and `tests/scenarios/` the scenario files it runs at 60 Hz and 120 Hz with the tests,
+  named `scenarios:`, each run writing a metrics file to `metrics/` in the build directory.
+  `tests/build/` holds tests of the build itself, named `build:`, and
   `tests/support/` holds what the tests share: Jolt's process-wide
   setup as a host does it, the job system and temporary allocator a host lends a world, with a fixed
   number of threads, and a log sink that records what it receives. No test opens a window.
@@ -238,12 +242,14 @@ replays depend on. The core keeps to the rules Jolt's deterministic build keeps 
     that no other check passes it. These are used sparingly.
   - `aplomb_add_compile_failure_test` adds a source built with the library's settings that must
     fail to compile, and for the reason the test names.
+  - `aplomb_add_scenario_test` adds a scenario file of `tests/scenarios/`, which `aplomb_runner`
+    runs at 60 Hz and at 120 Hz.
   - `aplomb_add_script_test` adds a CMake script that tests the build's own CMake code, such as
     the licence check on the fake vcpkg trees of `tests/build/licenses/`, through
     `tests/support/check_program.cmake` too.
 - The core's tests build their rigs and scenes in C++, and never read a file. The tests of
-  `aplomb::files` read rig files from text, and from disk only to test reading a path and the rig
-  files in `assets/rigs/`.
+  `aplomb::files` read rig and scenario files from text, and touch the disk only to test reading
+  or writing a path and the rig files in `assets/rigs/`.
 
 ## Commits and branches
 

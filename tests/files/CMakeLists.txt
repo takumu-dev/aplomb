@@ -1,7 +1,9 @@
 aplomb_add_tests(files
     SOURCES
         humanoid_rig_tests.cpp
+        metrics_file_tests.cpp
         rig_file_tests.cpp
+        scenario_file_tests.cpp
     LIBRARIES
         aplomb::files
         aplomb::scenes

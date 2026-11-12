@@ -40,12 +40,6 @@ using detail::JsonFile;
 
 constexpr std::string_view kind = "rig file";
 
-std::optional<JPH::Vec3> read_vector(const Field& field, JsonFile& file) {
-    return detail::read_numbers<3>(field, file).transform([](const std::array<float, 3>& numbers) {
-        return JPH::Vec3(numbers[0], numbers[1], numbers[2]);
-    });
-}
-
 std::optional<JPH::Quat> read_quaternion(const Field& field, JsonFile& file) {
     return detail::read_numbers<4>(field, file).transform([](const std::array<float, 4>& numbers) {
         return JPH::Quat(numbers[0], numbers[1], numbers[2], numbers[3]);
@@ -79,7 +73,7 @@ class RigFileReader {
                  .has_value()) {
             return rig;
         }
-        read_into(root->take("name"), rig.name, detail::read_string);
+        detail::read_into(root->take("name"), rig.name, detail::read_string, file_);
         if (const std::optional<Field> parts = root->take("parts")) {
             for (const Field& part : detail::read_array(*parts, file_).value_or({})) {
                 rig.parts.push_back(read_part(part));
@@ -90,23 +84,13 @@ class RigFileReader {
     }
 
   private:
-    // Reads a field's value into `out`, if it has one and it reads.
-    template <typename T, typename Read>
-    void read_into(const std::optional<Field>& field, T& out, Read read) {
-        if (field.has_value()) {
-            if (auto value = read(*field, file_.get())) {
-                out = std::move(*value);
-            }
-        }
-    }
-
     PartDesc read_part(const Field& field) {
         PartDesc part;
         std::optional<detail::ObjectReader> reader = detail::read_object(field, "part", file_);
         if (!reader.has_value()) {
             return part;
         }
-        read_into(reader->take("name"), part.name, detail::read_string);
+        detail::read_into(reader->take("name"), part.name, detail::read_string, file_);
         // The root part says that it has no parent, so that a parent left out isn't taken for it.
         if (const std::optional<Field> parent = reader->take("parent");
             parent.has_value() && !parent->value.is_null()) {
@@ -121,10 +105,13 @@ class RigFileReader {
         if (const std::optional<Field> shape = reader->take("shape")) {
             part.shape = read_shape(*shape);
         }
-        read_into(reader->take("mass"), part.mass, detail::read_number);
-        read_into(reader->take("bind_position"), part.bind_position, read_vector);
-        read_into(reader->take("bind_rotation"), part.bind_rotation, read_quaternion);
-        read_into(reader->take_optional("friction"), part.friction, detail::read_number);
+        detail::read_into(reader->take("mass"), part.mass, detail::read_number, file_);
+        detail::read_into(reader->take("bind_position"), part.bind_position, detail::read_vector,
+                          file_);
+        detail::read_into(reader->take("bind_rotation"), part.bind_rotation, read_quaternion,
+                          file_);
+        detail::read_into(reader->take_optional("friction"), part.friction, detail::read_number,
+                          file_);
         if (const std::optional<Field> joint = reader->take_optional("joint")) {
             part.joint = read_joint(*joint);
         }
@@ -174,18 +161,20 @@ class RigFileReader {
         if (type->name == "box") {
             reader->rename("box shape");
             BoxDesc box;
-            read_into(reader->take("half_extents"), box.half_extents, read_vector);
+            detail::read_into(reader->take("half_extents"), box.half_extents, detail::read_vector,
+                              file_);
             shape = box;
         } else if (type->name == "capsule") {
             reader->rename("capsule shape");
             CapsuleDesc capsule;
-            read_into(reader->take("radius"), capsule.radius, detail::read_number);
-            read_into(reader->take("half_height"), capsule.half_height, detail::read_number);
+            detail::read_into(reader->take("radius"), capsule.radius, detail::read_number, file_);
+            detail::read_into(reader->take("half_height"), capsule.half_height, detail::read_number,
+                              file_);
             shape = capsule;
         } else if (type->name == "sphere") {
             reader->rename("sphere shape");
             SphereDesc sphere;
-            read_into(reader->take("radius"), sphere.radius, detail::read_number);
+            detail::read_into(reader->take("radius"), sphere.radius, detail::read_number, file_);
             shape = sphere;
         } else {
             report_unknown_type(*type, "shape", R"("box", "capsule" or "sphere")");
@@ -208,22 +197,29 @@ class RigFileReader {
         if (type->name == "swing_twist") {
             reader->rename("swing_twist joint");
             SwingTwistJointDesc swing_twist;
-            read_into(reader->take("anchor"), swing_twist.anchor, read_vector);
-            read_into(reader->take("twist_axis"), swing_twist.twist_axis, read_vector);
-            read_into(reader->take("plane_axis"), swing_twist.plane_axis, read_vector);
-            read_into(reader->take("normal_half_cone"), swing_twist.normal_half_cone, read_angle);
-            read_into(reader->take("plane_half_cone"), swing_twist.plane_half_cone, read_angle);
-            read_into(reader->take("twist_min"), swing_twist.twist_min, read_angle);
-            read_into(reader->take("twist_max"), swing_twist.twist_max, read_angle);
+            detail::read_into(reader->take("anchor"), swing_twist.anchor, detail::read_vector,
+                              file_);
+            detail::read_into(reader->take("twist_axis"), swing_twist.twist_axis,
+                              detail::read_vector, file_);
+            detail::read_into(reader->take("plane_axis"), swing_twist.plane_axis,
+                              detail::read_vector, file_);
+            detail::read_into(reader->take("normal_half_cone"), swing_twist.normal_half_cone,
+                              read_angle, file_);
+            detail::read_into(reader->take("plane_half_cone"), swing_twist.plane_half_cone,
+                              read_angle, file_);
+            detail::read_into(reader->take("twist_min"), swing_twist.twist_min, read_angle, file_);
+            detail::read_into(reader->take("twist_max"), swing_twist.twist_max, read_angle, file_);
             joint = swing_twist;
         } else if (type->name == "hinge") {
             reader->rename("hinge joint");
             HingeJointDesc hinge;
-            read_into(reader->take("anchor"), hinge.anchor, read_vector);
-            read_into(reader->take("hinge_axis"), hinge.hinge_axis, read_vector);
-            read_into(reader->take("normal_axis"), hinge.normal_axis, read_vector);
-            read_into(reader->take("limit_min"), hinge.limit_min, read_angle);
-            read_into(reader->take("limit_max"), hinge.limit_max, read_angle);
+            detail::read_into(reader->take("anchor"), hinge.anchor, detail::read_vector, file_);
+            detail::read_into(reader->take("hinge_axis"), hinge.hinge_axis, detail::read_vector,
+                              file_);
+            detail::read_into(reader->take("normal_axis"), hinge.normal_axis, detail::read_vector,
+                              file_);
+            detail::read_into(reader->take("limit_min"), hinge.limit_min, read_angle, file_);
+            detail::read_into(reader->take("limit_max"), hinge.limit_max, read_angle, file_);
             joint = hinge;
         } else {
             report_unknown_type(*type, "joint", R"("swing_twist" or "hinge")");
@@ -239,9 +235,10 @@ class RigFileReader {
         if (!reader.has_value()) {
             return muscle;
         }
-        read_into(reader->take("stiffness"), muscle.stiffness, detail::read_number);
-        read_into(reader->take("damping"), muscle.damping, detail::read_number);
-        read_into(reader->take("max_torque"), muscle.max_torque, detail::read_number);
+        detail::read_into(reader->take("stiffness"), muscle.stiffness, detail::read_number, file_);
+        detail::read_into(reader->take("damping"), muscle.damping, detail::read_number, file_);
+        detail::read_into(reader->take("max_torque"), muscle.max_torque, detail::read_number,
+                          file_);
         reader->finish();
         return muscle;
     }

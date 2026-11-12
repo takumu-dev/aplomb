@@ -4,6 +4,9 @@
 #include <aplomb/core/rig_problem.hpp>
 #include <aplomb/files/file_problem.hpp>
 
+#include <Jolt/Jolt.h>
+
+#include <Jolt/Math/Vec3.h>
 #include <pedantjson/pedantjson.hpp>
 
 #include <algorithm>
@@ -25,16 +28,16 @@ namespace aplomb::detail {
 
 namespace {
 
-void report_wrong_type(const Field& field, std::string_view expected, JsonFile& file) {
-    file.report_at(field, FileProblemCode::wrong_type,
-                   std::format("expected {}, not {}", expected, kind_name(field.value.kind())));
-}
-
 std::string_view article_for(std::string_view noun) {
     return noun.find_first_of("aeiou") == 0 ? "an" : "a";
 }
 
 } // namespace
+
+void report_wrong_type(const Field& field, std::string_view expected, JsonFile& file) {
+    file.report_at(field, FileProblemCode::wrong_type,
+                   std::format("expected {}, not {}", expected, kind_name(field.value.kind())));
+}
 
 JsonFile::JsonFile(std::string path, const pedantjson::Document& document) noexcept
     : path_(std::move(path)), document_(document) {}
@@ -178,14 +181,18 @@ std::optional<std::string> read_string(const Field& field, JsonFile& file) {
     return std::string(*string);
 }
 
-std::optional<float> read_number(const Field& field, JsonFile& file) {
+namespace {
+
+// Reads a number as the floating-point value of type T nearest it.
+template <typename T> std::optional<T> read_floating(const Field& field, JsonFile& file) {
     const std::optional<pedantjson::Number> number = field.value.as_number();
     if (!number.has_value()) {
         report_wrong_type(field, "a number", file);
         return std::nullopt;
     }
-    // A float holds a number of any form, so being out of its range is the only way this fails.
-    const std::expected<float, pedantjson::NumberError> value = number->to<float>();
+    // A floating-point type holds a number of any form, so being out of its range is the only way
+    // this fails.
+    const std::expected<T, pedantjson::NumberError> value = number->to<T>();
     if (!value.has_value()) {
         file.report_at(
             field, FileProblemCode::number_out_of_range,
@@ -193,6 +200,16 @@ std::optional<float> read_number(const Field& field, JsonFile& file) {
         return std::nullopt;
     }
     return *value;
+}
+
+} // namespace
+
+std::optional<float> read_number(const Field& field, JsonFile& file) {
+    return read_floating<float>(field, file);
+}
+
+std::optional<double> read_double(const Field& field, JsonFile& file) {
+    return read_floating<double>(field, file);
 }
 
 template <std::size_t Count>
@@ -218,6 +235,12 @@ std::optional<std::array<float, Count>> read_numbers(const Field& field, JsonFil
 
 template std::optional<std::array<float, 3>> read_numbers<3>(const Field& field, JsonFile& file);
 template std::optional<std::array<float, 4>> read_numbers<4>(const Field& field, JsonFile& file);
+
+std::optional<JPH::Vec3> read_vector(const Field& field, JsonFile& file) {
+    return read_numbers<3>(field, file).transform([](const std::array<float, 3>& numbers) {
+        return JPH::Vec3(numbers[0], numbers[1], numbers[2]);
+    });
+}
 
 std::optional<std::uint32_t> read_format_and_version(ObjectReader& root, std::string_view kind,
                                                      std::string_view format,
