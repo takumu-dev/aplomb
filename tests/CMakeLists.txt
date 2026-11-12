@@ -6,9 +6,13 @@ include(Catch)
 
 set(APLOMB_TEST_SUPPORT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/support")
 
-# What the tests share: Jolt's process-wide setup and the job system and temporary allocator a host
-# passes to a world.
-add_library(aplomb_test_support STATIC support/host_services.cpp support/jolt_runtime.cpp)
+# What the tests share: Jolt's process-wide setup, the job system and temporary allocator a host
+# passes to a world, and rigs built in code.
+add_library(aplomb_test_support STATIC
+    support/host_services.cpp
+    support/jolt_runtime.cpp
+    support/rigs.cpp
+)
 target_include_directories(aplomb_test_support PUBLIC support)
 target_link_libraries(aplomb_test_support PUBLIC aplomb::core)
 aplomb_target_warnings(aplomb_test_support)
@@ -147,4 +151,5 @@ function(aplomb_add_compile_failure_test name description)
 endfunction()
 
 add_subdirectory(core)
+add_subdirectory(scenes)
 add_subdirectory(build)

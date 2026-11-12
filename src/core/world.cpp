@@ -1,8 +1,13 @@
 #include <aplomb/core/world.hpp>
 
 #include <aplomb/core/assertion.hpp>
+#include <aplomb/core/character.hpp>
+#include <aplomb/core/character_error.hpp>
 #include <aplomb/core/log_sink.hpp>
 #include <aplomb/core/object_layers.hpp>
+#include <aplomb/core/rig_desc.hpp>
+#include <aplomb/core/transform.hpp>
+#include <aplomb/core/typed_id.hpp>
 #include <aplomb/core/world_error.hpp>
 #include <aplomb/core/world_settings.hpp>
 
@@ -11,12 +16,14 @@
 #include <Jolt/Physics/Collision/PhysicsMaterial.h>
 
 #include <cmath>
+#include <cstdint>
 #include <expected>
 #include <format>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 namespace aplomb {
 
@@ -92,7 +99,8 @@ std::string describe_shortage(JPH::EPhysicsUpdateError errors) {
 
 } // namespace
 
-// The physics system keeps pointers to the layer filters, so the state never moves once made.
+// The physics system keeps pointers to the layer filters, so the state never moves once made. The
+// characters come after the physics system, so that they leave it before it is destroyed.
 struct World::State {
     BroadPhaseLayers broad_phase_layers;
     ObjectVsBroadPhaseLayers object_vs_broad_phase_layers;
@@ -101,6 +109,10 @@ struct World::State {
     float step_duration = 0.0F;
     JPH::JobSystem* job_system = nullptr;
     JPH::TempAllocator* temp_allocator = nullptr;
+    // Indexed by character id. A removed character leaves its place empty, so that its id is never
+    // given to another. Each character lives apart from the table, so that adding another doesn't
+    // move it from under a host's reference.
+    std::vector<std::unique_ptr<Character>> characters;
 };
 
 std::expected<World, WorldError> World::create(const WorldSettings& settings) {
@@ -154,6 +166,43 @@ void World::step() {
                         "were missed",
                         describe_shortage(errors)));
     }
+    for (const std::unique_ptr<Character>& character : state_->characters) {
+        if (character != nullptr) {
+            character->update_physics_pose(state_->physics_system.GetBodyInterface());
+        }
+    }
+}
+
+std::expected<CharacterId, CharacterError> World::add_character(const RigDesc& rig,
+                                                                const Transform& root) {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    const CharacterId id(static_cast<std::uint32_t>(state_->characters.size()));
+    // Each character's parts share a collision group of their own, in which parts joined to each
+    // other don't collide.
+    auto character = Character::create(rig, root, state_->physics_system, id.index());
+    if (!character.has_value()) {
+        return std::unexpected(std::move(character.error()));
+    }
+    state_->characters.push_back(std::make_unique<Character>(std::move(*character)));
+    return id;
+}
+
+void World::remove_character(CharacterId character) {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    APLOMB_ASSERT(character.index() < state_->characters.size(),
+                  "the character is one of the world's characters");
+    std::unique_ptr<Character>& found = state_->characters[character.index()];
+    APLOMB_ASSERT(found != nullptr, "the character is one of the world's characters");
+    found.reset();
+}
+
+const Character& World::character(CharacterId character) const {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    APLOMB_ASSERT(character.index() < state_->characters.size(),
+                  "the character is one of the world's characters");
+    const std::unique_ptr<Character>& found = state_->characters[character.index()];
+    APLOMB_ASSERT(found != nullptr, "the character is one of the world's characters");
+    return *found;
 }
 
 JPH::PhysicsSystem& World::physics_system() {

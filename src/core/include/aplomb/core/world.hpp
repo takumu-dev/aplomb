@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <aplomb/core/character.hpp>
+#include <aplomb/core/character_error.hpp>
+#include <aplomb/core/rig_desc.hpp>
+#include <aplomb/core/transform.hpp>
+#include <aplomb/core/typed_id.hpp>
 #include <aplomb/core/world_error.hpp>
 #include <aplomb/core/world_settings.hpp>
 
@@ -43,8 +48,31 @@ class World {
     /// Destroys the world and its physics system, with every body in it.
     ~World();
 
-    /// Advances the world by one fixed step, stepping its physics system once.
+    /// Advances the world by one fixed step, stepping its physics system once, then reads each
+    /// character's physics pose.
     void step();
+
+    /// Adds a character made from a rig, in the rig's bind pose, as a passive ragdoll.
+    ///
+    /// The rig is checked in full first, and every problem with it is reported.
+    ///
+    /// \param rig What the character is made from.
+    /// \param root Where the rig's space is placed in the world. Its rotation is a unit
+    /// quaternion.
+    /// \return The character's id, or why it couldn't be added.
+    [[nodiscard]] std::expected<CharacterId, CharacterError> add_character(const RigDesc& rig,
+                                                                           const Transform& root);
+
+    /// Removes a character, taking its bodies and constraints out of the physics system.
+    ///
+    /// \param character A character of this world.
+    void remove_character(CharacterId character);
+
+    /// One of the world's characters. The reference holds until the character is removed or the
+    /// world is destroyed.
+    ///
+    /// \param character A character of this world.
+    [[nodiscard]] const Character& character(CharacterId character) const;
 
     /// The physics system the world owns, to which the host adds the bodies of its scene.
     [[nodiscard]] JPH::PhysicsSystem& physics_system();

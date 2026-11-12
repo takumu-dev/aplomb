@@ -7,12 +7,26 @@ add_library(aplomb::core ALIAS aplomb_core)
 target_sources(aplomb_core
     PRIVATE
         assertion.cpp
+        character.cpp
         log_sink.cpp
+        pose.cpp
+        rig_check.cpp
         world.cpp
     PUBLIC FILE_SET HEADERS BASE_DIRS include FILES
         include/aplomb/core/assertion.hpp
+        include/aplomb/core/character.hpp
+        include/aplomb/core/character_error.hpp
+        include/aplomb/core/joint_desc.hpp
         include/aplomb/core/log_sink.hpp
+        include/aplomb/core/muscle_desc.hpp
         include/aplomb/core/object_layers.hpp
+        include/aplomb/core/part_desc.hpp
+        include/aplomb/core/pose.hpp
+        include/aplomb/core/rig_desc.hpp
+        include/aplomb/core/rig_problem.hpp
+        include/aplomb/core/shape_desc.hpp
+        include/aplomb/core/transform.hpp
+        include/aplomb/core/typed_id.hpp
         include/aplomb/core/world.hpp
         include/aplomb/core/world_error.hpp
         include/aplomb/core/world_settings.hpp
