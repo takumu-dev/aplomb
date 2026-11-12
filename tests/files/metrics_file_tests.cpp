@@ -37,11 +37,13 @@ TEST_CASE("a metrics file gives the scenario, the step rate and each metric's va
 )");
 }
 
-TEST_CASE("a metrics file escapes the scenario's name, writes each number in its shortest form, "
-          "and a value that isn't finite as null",
-          "[files]") {
+TEST_CASE(
+    "a metrics file escapes the scenario's name, giving a control character its short escape "
+    "where it has one, writes each number in its shortest form, and a value that isn't finite "
+    "as null",
+    "[files]") {
     const aplomb::RunMetrics metrics{
-        .scenario = "a \"drop\"\\\n",
+        .scenario = "a \"drop\"\\\n\t\x01",
         .step_rate = 59.9F,
         .values =
             {
@@ -56,7 +58,7 @@ TEST_CASE("a metrics file escapes the scenario's name, writes each number in its
     CHECK(aplomb::write_metrics_file(metrics) == R"({
   "format": "aplomb.metrics",
   "version": 1,
-  "scenario": "a \"drop\"\\\u000a",
+  "scenario": "a \"drop\"\\\n\t\u0001",
   "step_rate": 59.9,
   "metrics": {
     "nan_count": 3,

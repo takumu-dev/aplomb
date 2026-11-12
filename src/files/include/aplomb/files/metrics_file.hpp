@@ -45,14 +45,14 @@ struct RunMetrics {
 /// Each number is written in the shortest form that reads back as the same value, and a value that
 /// isn't finite as null.
 ///
-/// \param metrics What the run measured.
+/// \param metrics What the run measured, whose scenario name must be UTF-8.
 /// \return The file's text.
 [[nodiscard]] std::string write_metrics_file(const RunMetrics& metrics);
 
 /// Saves a metrics file, replacing any file at its path.
 ///
 /// \param path The file's path.
-/// \param metrics What the run measured.
+/// \param metrics What the run measured, whose scenario name must be UTF-8.
 /// \return Nothing, or why the file couldn't be written.
 [[nodiscard]] std::expected<void, FileError> save_metrics_file(const std::filesystem::path& path,
                                                                const RunMetrics& metrics);
