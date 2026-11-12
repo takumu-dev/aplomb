@@ -58,6 +58,7 @@ set(APLOMB_SANITIZERS "" CACHE STRING
 aplomb_enable_sanitizers("${APLOMB_SANITIZERS}")
 
 add_subdirectory(src/core)
+add_subdirectory(src/scenes)
 
 if(APLOMB_BUILD_TESTS)
     enable_testing()

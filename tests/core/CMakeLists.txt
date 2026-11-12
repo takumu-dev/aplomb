@@ -1,10 +1,13 @@
 aplomb_add_tests(core
     SOURCES
         assertion_tests.cpp
+        character_error_tests.cpp
+        character_tests.cpp
         log_sink_tests.cpp
         world_tests.cpp
     LIBRARIES
         aplomb::core
+        aplomb::scenes
 )
 
 aplomb_add_program_test(core "the default log sink writes each message to stderr with its severity"
@@ -65,4 +68,13 @@ aplomb_add_precondition_test(core
 aplomb_add_precondition_test(core "stepping a moved-from world fires its precondition"
     SOURCE programs/step_moved_from_world.cpp
     MESSAGE "the world hasn't been moved from"
+)
+aplomb_add_precondition_test(core
+    "adding a character whose root rotation isn't a unit quaternion fires its precondition"
+    SOURCE programs/character_with_non_unit_root_rotation.cpp
+    MESSAGE "a character's root rotation is a unit quaternion"
+)
+aplomb_add_precondition_test(core "reaching a removed character fires its precondition"
+    SOURCE programs/removed_character.cpp
+    MESSAGE "the character is one of the world's characters"
 )

@@ -47,6 +47,8 @@ departs from them, it says so.
   world and everything that controls a character. Its parts stay directories inside it, not
   targets, since they run as one ordered step. Its public headers sit under
   `src/core/include/aplomb/core/`, and its private headers beside its sources.
+- `aplomb::scenes`, in `src/scenes/`, builds scenes in code, such as `flat_ground`, into a world's
+  physics system. It links the core, and the library a host ships never depends on it.
 - A target includes only the headers of what it links, since each public include tree comes only
   with its library. Jolt's types may appear in the core's public headers, since aplomb is built on
   Jolt alone.
