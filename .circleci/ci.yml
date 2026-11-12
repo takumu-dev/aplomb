@@ -101,6 +101,9 @@ jobs:
         default: true
     executor: << parameters.executor >>
     environment:
+      # A Docker job sees the host's processors, not the four its resource class gives it, and Ninja
+      # would run a compile for each and run out of the job's memory.
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
       CMAKE_CXX_COMPILER_LAUNCHER: ccache
       CCACHE_DIR: /root/.cache/ccache
       CCACHE_MAXSIZE: 500M
