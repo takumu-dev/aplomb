@@ -17,7 +17,9 @@
 #include <Jolt/Math/Vec3.h>
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/PhysicsMaterial.h>
+#include <Jolt/Physics/PhysicsStepListener.h>
 #include <Jolt/Physics/StateRecorder.h>
 
 #include <cmath>
@@ -26,6 +28,7 @@
 #include <expected>
 #include <format>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -133,16 +136,51 @@ class StateHasher final : public JPH::StateRecorder {
     std::uint64_t hash_ = offset_basis;
 };
 
+// The updates a physics system took, and how long they stepped it for in all.
+struct TimedUpdates {
+    int count = 0;
+    float elapsed = 0.0F;
+};
+
+// Counts the updates of the physics system it listens to, and adds up how long they step it for
+// through each of their collision steps. Jolt calls it once per collision step, one step after
+// another, and an update returns only once its steps are done, so what it counts is read safely
+// after the update.
+class StepTimer final : public JPH::PhysicsStepListener {
+  public:
+    // The updates since this was last called.
+    [[nodiscard]] TimedUpdates take() noexcept { return std::exchange(updates_, {}); }
+
+    void OnStep(const JPH::PhysicsStepListenerContext& step) override {
+        updates_.count += step.mIsFirstStep ? 1 : 0;
+        updates_.elapsed += step.mDeltaTime;
+    }
+
+  private:
+    TimedUpdates updates_;
+};
+
+// Whether `elapsed`, how long a host stepped its physics system for between the two calls around
+// its update, is as long as one of the world's steps. Collision steps' durations add up to their
+// update's only to within rounding.
+bool lasted_one_step(float elapsed, float step_duration) noexcept {
+    constexpr float tolerance = 1e-4F;
+    return std::abs(elapsed - step_duration) <= step_duration * tolerance;
+}
+
 } // namespace
 
-// The physics system keeps pointers to the layer filters, so the state never moves once made. The
-// characters come after the physics system, so that they leave it before it is destroyed.
+// An owned physics system keeps pointers to the layer filters, so the state never moves once made.
+// The characters come after the physics system, so that they leave it before it is destroyed. The
+// fields are ordered so that none needs padding.
 struct World::State {
     BroadPhaseLayers broad_phase_layers;
     ObjectVsBroadPhaseLayers object_vs_broad_phase_layers;
     ObjectLayerPairs object_layer_pairs;
-    JPH::PhysicsSystem physics_system;
-    float step_duration = 0.0F;
+    // The owned physics system, or the host's for an attached world.
+    JPH::PhysicsSystem* physics_system = nullptr;
+    // Empty for an attached world.
+    std::optional<JPH::PhysicsSystem> owned_physics_system;
     JPH::JobSystem* job_system = nullptr;
     JPH::TempAllocator* temp_allocator = nullptr;
     // Indexed by character id. A removed character leaves its place empty, so that its id is never
@@ -151,8 +189,29 @@ struct World::State {
     std::vector<std::unique_ptr<Character>> characters;
     // The pushes sent since the last step, in the order they were sent.
     std::vector<Push> pushes;
-    bool recording = false;
     std::vector<RecordedStep> recorded_steps;
+    // Listens to an attached world's physics system, to check the host's step.
+    StepTimer step_timer;
+    float step_duration = 0.0F;
+    JPH::ObjectLayer part_layer = object_layers::moving;
+    bool recording = false;
+    // Whether the host is between an attached world's before_physics_step() and
+    // after_physics_step().
+    bool in_host_step = false;
+
+    State() = default;
+    State(const State&) = delete;
+    State(State&&) = delete;
+    State& operator=(const State&) = delete;
+    State& operator=(State&&) = delete;
+
+    ~State() {
+        if (attached()) {
+            physics_system->RemoveStepListener(&step_timer);
+        }
+    }
+
+    [[nodiscard]] bool attached() const noexcept { return !owned_physics_system.has_value(); }
 };
 
 std::expected<World, WorldError> World::create(const WorldSettings& settings) {
@@ -163,6 +222,8 @@ std::expected<World, WorldError> World::create(const WorldSettings& settings) {
                   "Jolt's types are registered before a world is created");
     APLOMB_ASSERT(settings.job_system != nullptr, "a world is given a job system");
     APLOMB_ASSERT(settings.temp_allocator != nullptr, "a world is given a temporary allocator");
+    APLOMB_ASSERT(settings.physics_system != nullptr || !settings.part_layer.has_value(),
+                  "a world that owns its physics system is given no object layer for parts");
 
     // The rate is checked before it divides anything. One so small that a step would last forever
     // fails too.
@@ -177,9 +238,18 @@ std::expected<World, WorldError> World::create(const WorldSettings& settings) {
     }
 
     auto state = std::make_unique<State>();
-    state->physics_system.Init(max_bodies, body_mutexes, max_body_pairs, max_contact_constraints,
-                               state->broad_phase_layers, state->object_vs_broad_phase_layers,
-                               state->object_layer_pairs);
+    if (settings.physics_system != nullptr) {
+        APLOMB_ASSERT(settings.part_layer.has_value(),
+                      "an attached world is given an object layer for its characters' parts");
+        state->physics_system = settings.physics_system;
+        state->part_layer = *settings.part_layer;
+        state->physics_system->AddStepListener(&state->step_timer);
+    } else {
+        state->physics_system = &state->owned_physics_system.emplace();
+        state->physics_system->Init(max_bodies, body_mutexes, max_body_pairs,
+                                    max_contact_constraints, state->broad_phase_layers,
+                                    state->object_vs_broad_phase_layers, state->object_layer_pairs);
+    }
     state->step_duration = 1.0F / settings.step_rate;
     state->job_system = settings.job_system;
     state->temp_allocator = settings.temp_allocator;
@@ -196,7 +266,47 @@ World::~World() = default;
 
 void World::step() {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
-    JPH::BodyInterface& body_interface = state_->physics_system.GetBodyInterface();
+    APLOMB_ASSERT(!state_->attached(), "the world owns its physics system");
+    RecordedStep recorded = apply_pushes();
+    constexpr int collision_steps = 1;
+    const JPH::EPhysicsUpdateError errors = state_->physics_system->Update(
+        state_->step_duration, collision_steps, state_->temp_allocator, state_->job_system);
+    // Jolt carries on without what didn't fit, so some collisions go unhandled for this step.
+    if (errors != JPH::EPhysicsUpdateError::None) {
+        log(LogSeverity::warning,
+            std::format("a step ran out of room in the physics system for {}, and some collisions "
+                        "were missed",
+                        describe_shortage(errors)));
+    }
+    finish_step(std::move(recorded));
+}
+
+void World::before_physics_step() {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    APLOMB_ASSERT(state_->attached(), "the world is attached to the host's physics system");
+    APLOMB_ASSERT(!state_->in_host_step, "the host's last step ended with after_physics_step()");
+    const TimedUpdates since_last_step = state_->step_timer.take();
+    APLOMB_ASSERT(since_last_step.count == 0,
+                  "the host steps its physics system only between before_physics_step() and "
+                  "after_physics_step()");
+    state_->in_host_step = true;
+    std::ignore = apply_pushes();
+}
+
+void World::after_physics_step() {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    APLOMB_ASSERT(state_->attached(), "the world is attached to the host's physics system");
+    APLOMB_ASSERT(state_->in_host_step, "the host's step began with before_physics_step()");
+    state_->in_host_step = false;
+    const TimedUpdates during_step = state_->step_timer.take();
+    APLOMB_ASSERT(during_step.count == 1 &&
+                      lasted_one_step(during_step.elapsed, state_->step_duration),
+                  "the host steps its physics system once by the world's step duration");
+    finish_step({});
+}
+
+RecordedStep World::apply_pushes() {
+    JPH::BodyInterface& body_interface = state_->physics_system->GetBodyInterface();
     // A recorded step holds the pushes that were applied, so that a push dropped with its
     // character isn't sent to a character that a replay of the step doesn't have.
     RecordedStep recorded;
@@ -212,16 +322,11 @@ void World::step() {
         }
     }
     state_->pushes.clear();
-    constexpr int collision_steps = 1;
-    const JPH::EPhysicsUpdateError errors = state_->physics_system.Update(
-        state_->step_duration, collision_steps, state_->temp_allocator, state_->job_system);
-    // Jolt carries on without what didn't fit, so some collisions go unhandled for this step.
-    if (errors != JPH::EPhysicsUpdateError::None) {
-        log(LogSeverity::warning,
-            std::format("a step ran out of room in the physics system for {}, and some collisions "
-                        "were missed",
-                        describe_shortage(errors)));
-    }
+    return recorded;
+}
+
+void World::finish_step(RecordedStep recorded) {
+    const JPH::BodyInterface& body_interface = state_->physics_system->GetBodyInterface();
     for (const std::unique_ptr<Character>& character : state_->characters) {
         if (character != nullptr) {
             character->update_physics_pose(body_interface);
@@ -235,6 +340,7 @@ void World::step() {
 
 void World::start_recording() {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    APLOMB_ASSERT(!state_->attached(), "the world owns its physics system");
     state_->recording = true;
     state_->recorded_steps.clear();
 }
@@ -251,7 +357,8 @@ std::expected<CharacterId, CharacterError> World::add_character(const RigDesc& r
     const CharacterId id(static_cast<std::uint32_t>(state_->characters.size()));
     // Each character's parts share a collision group of their own, in which parts joined to each
     // other don't collide.
-    auto character = Character::create(rig, root, state_->physics_system, id.index());
+    auto character =
+        Character::create(rig, root, *state_->physics_system, state_->part_layer, id.index());
     if (!character.has_value()) {
         return std::unexpected(std::move(character.error()));
     }
@@ -287,19 +394,20 @@ const Character& World::character(CharacterId character) const {
 
 std::uint64_t World::state_hash() const {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    APLOMB_ASSERT(!state_->attached(), "the world owns its physics system");
     StateHasher hasher;
-    state_->physics_system.SaveState(hasher);
+    state_->physics_system->SaveState(hasher);
     return hasher.hash();
 }
 
 JPH::PhysicsSystem& World::physics_system() {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
-    return state_->physics_system;
+    return *state_->physics_system;
 }
 
 const JPH::PhysicsSystem& World::physics_system() const {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
-    return state_->physics_system;
+    return *state_->physics_system;
 }
 
 } // namespace aplomb

@@ -1,5 +1,6 @@
 #include <aplomb/core/world.hpp>
 
+#include "host_physics.hpp"
 #include "host_services.hpp"
 #include "jolt_runtime.hpp"
 #include "recording_log_sink.hpp"
@@ -17,8 +18,10 @@
 #include <Jolt/Jolt.h>
 
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/Constraints/Constraint.h>
+#include <Jolt/Physics/PhysicsStepListener.h>
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/generators/catch_generators.hpp>
@@ -33,11 +36,12 @@
 
 namespace {
 
-// Adds a sphere that falls freely from 10 m up, with no damping to slow it, and returns its id.
-JPH::BodyID add_falling_sphere(JPH::PhysicsSystem& physics_system) {
+// Adds a sphere on `layer` that falls freely from 10 m up, with no damping to slow it, and returns
+// its id.
+JPH::BodyID add_falling_sphere(JPH::PhysicsSystem& physics_system,
+                               JPH::ObjectLayer layer = aplomb::object_layers::moving) {
     JPH::BodyCreationSettings settings(new JPH::SphereShape(0.5F), JPH::RVec3(0.0F, 10.0F, 0.0F),
-                                       JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic,
-                                       aplomb::object_layers::moving);
+                                       JPH::Quat::sIdentity(), JPH::EMotionType::Dynamic, layer);
     settings.mLinearDamping = 0.0F;
     return physics_system.GetBodyInterface().CreateAndAddBody(settings, JPH::EActivation::Activate);
 }
@@ -96,6 +100,26 @@ ChainInAir chain_in_air(HostServices& services) {
 JPH::Vec3 pelvis_position(const ChainInAir& chain) {
     return chain.world.character(chain.character).physics_pose()[pelvis].position;
 }
+
+// One step of an attached world, around the host's own update of its physics system by
+// `duration` seconds, split into `collision_steps`.
+void step_attached(aplomb::World& world, HostPhysics& host, HostServices& services,
+                   float duration = 1.0F / 60.0F, int collision_steps = 1) {
+    world.before_physics_step();
+    host.update(services, duration, collision_steps);
+    world.after_physics_step();
+}
+
+// Counts the steps of the physics system it listens to.
+class StepCounter final : public JPH::PhysicsStepListener {
+  public:
+    [[nodiscard]] int count() const noexcept { return count_; }
+
+    void OnStep(const JPH::PhysicsStepListenerContext& /*context*/) override { ++count_; }
+
+  private:
+    int count_ = 0;
+};
 
 float vertical_velocity(const JPH::PhysicsSystem& physics_system, JPH::BodyID body) {
     return physics_system.GetBodyInterfaceNoLock().GetLinearVelocity(body).GetY();
@@ -449,4 +473,152 @@ TEST_CASE("a recording world doesn't record a push to a character removed before
     REQUIRE(steps.size() == 1);
     REQUIRE(steps[0].pushes.size() == 1);
     CHECK(steps[0].pushes[0].character == *other);
+}
+
+TEST_CASE("an attached world's character falls onto a body the host added to its physics system",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    HostPhysics host;
+    host.add_ground();
+    auto world = aplomb::World::create(host.world_settings(services));
+    REQUIRE(world.has_value());
+    const auto character =
+        world->add_character(chain_rig(), {.position = JPH::Vec3(0.0F, 1.0F, 0.0F)});
+    REQUIRE(character.has_value());
+
+    // Two seconds at 60 Hz: the character falls a metre and lands on the ground.
+    for (int step = 0; step < 120; ++step) {
+        step_attached(*world, host, services);
+    }
+
+    // The pelvis started 1.95 m up. It stands no higher than its bind pose's 0.95 m once the
+    // character is on the ground, and a character that fell through would be far below it.
+    const float pelvis_height = world->character(*character).physics_pose()[pelvis].position.GetY();
+    CHECK(pelvis_height > 0.05F);
+    CHECK(pelvis_height < 0.96F);
+}
+
+TEST_CASE("an attached world puts its characters' parts on the object layer the host chose",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    HostPhysics host;
+    auto world = aplomb::World::create(host.world_settings(services));
+    REQUIRE(world.has_value());
+
+    const auto character = world->add_character(chain_rig(), {});
+
+    REQUIRE(character.has_value());
+    const JPH::BodyInterface& bodies = host.physics_system().GetBodyInterface();
+    for (const aplomb::PartId part : {aplomb::PartId(0), aplomb::PartId(1), aplomb::PartId(2)}) {
+        CHECK(bodies.GetObjectLayer(world->character(*character).part_body(part)) ==
+              host_layers::characters);
+    }
+}
+
+TEST_CASE("an attached world leaves stepping its physics system to the host", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    HostPhysics host;
+    StepCounter steps;
+    host.physics_system().AddStepListener(&steps);
+    auto world = aplomb::World::create(host.world_settings(services));
+    REQUIRE(world.has_value());
+    REQUIRE(world->add_character(chain_rig(), {}).has_value());
+
+    step_attached(*world, host, services);
+    step_attached(*world, host, services);
+    step_attached(*world, host, services);
+
+    // The host's own updates alone.
+    CHECK(steps.count() == 3);
+    host.physics_system().RemoveStepListener(&steps);
+}
+
+TEST_CASE("an attached world reads its characters' physics pose after the host's step", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    HostPhysics host;
+    auto world = aplomb::World::create(host.world_settings(services));
+    REQUIRE(world.has_value());
+    const auto character = world->add_character(chain_rig(), {});
+    REQUIRE(character.has_value());
+    const JPH::BodyID pelvis_body = world->character(*character).part_body(pelvis);
+    const JPH::BodyInterface& bodies = host.physics_system().GetBodyInterface();
+
+    world->before_physics_step();
+    host.update(services, 1.0F / 60.0F);
+    const JPH::Vec3 before_pose = world->character(*character).physics_pose()[pelvis].position;
+    world->after_physics_step();
+
+    // The pose is the pelvis's bind position until the world reads it from the stepped body.
+    CHECK(before_pose == JPH::Vec3(0.0F, 0.95F, 0.0F));
+    CHECK(world->character(*character).physics_pose()[pelvis].position ==
+          bodies.GetPosition(pelvis_body));
+}
+
+TEST_CASE("a push to an attached world's character takes effect at the host's next step",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    const JPH::Vec3 impulse(20.0F, 0.0F, 0.0F);
+    HostPhysics pushed_host;
+    HostPhysics unpushed_host;
+    auto pushed = aplomb::World::create(pushed_host.world_settings(services));
+    auto unpushed = aplomb::World::create(unpushed_host.world_settings(services));
+    REQUIRE(pushed.has_value());
+    REQUIRE(unpushed.has_value());
+    const auto pushed_character = pushed->add_character(chain_rig(), {});
+    const auto unpushed_character = unpushed->add_character(chain_rig(), {});
+    REQUIRE(pushed_character.has_value());
+    REQUIRE(unpushed_character.has_value());
+    const auto pelvis_of = [&](const aplomb::World& world, aplomb::CharacterId character) {
+        return world.character(character).physics_pose()[pelvis].position;
+    };
+
+    pushed->push(*pushed_character, pelvis, pelvis_of(*pushed, *pushed_character), impulse);
+    step_attached(*pushed, pushed_host, services);
+    step_attached(*unpushed, unpushed_host, services);
+
+    // Both fall alike, so the push alone parts them.
+    const JPH::Vec3 moved =
+        pelvis_of(*pushed, *pushed_character) - pelvis_of(*unpushed, *unpushed_character);
+    CHECK(moved.Length() > 0.0F);
+    CHECK(moved.Normalized().Dot(impulse.Normalized()) > 0.99F);
+}
+
+TEST_CASE("an attached world takes a host's update split into collision steps as one step",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    HostPhysics host;
+    const int collision_steps = GENERATE(2, 3, 4);
+    auto world = aplomb::World::create(host.world_settings(services));
+    REQUIRE(world.has_value());
+    const JPH::BodyID sphere = add_falling_sphere(host.physics_system(), host_layers::props);
+
+    for (int step = 0; step < 3; ++step) {
+        step_attached(*world, host, services, 1.0F / 60.0F, collision_steps);
+    }
+
+    // Each update adds gravity, 9.81 m/s², for 1/60 s to the sphere's velocity.
+    CHECK(vertical_velocity(host.physics_system(), sphere) == Catch::Approx(-0.4905F));
+}
+
+TEST_CASE("an attached world is stepped at the step rate it is given", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    HostPhysics host;
+    aplomb::WorldSettings settings = host.world_settings(services);
+    settings.step_rate = 120.0F;
+    auto world = aplomb::World::create(settings);
+    REQUIRE(world.has_value());
+    const JPH::BodyID sphere = add_falling_sphere(host.physics_system(), host_layers::props);
+
+    for (int step = 0; step < 3; ++step) {
+        step_attached(*world, host, services, 1.0F / 120.0F);
+    }
+
+    CHECK(vertical_velocity(host.physics_system(), sphere) == Catch::Approx(-0.24525F));
 }

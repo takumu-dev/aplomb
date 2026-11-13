@@ -11,7 +11,8 @@ physically correct way.
 
 It is at an early stage. Today `aplomb::core` holds a world that owns a Jolt physics system and
 steps it at a fixed rate, hashes its whole physical state and records each step's messages and
-state hash, passive ragdoll characters made from rigs, the checks of preconditions with their
+state hash, or that attaches to a host's own physics system and leaves stepping it to the host,
+passive ragdoll characters made from rigs, the checks of preconditions with their
 replaceable handler, and the replaceable log sink. `aplomb::files` reads rigs from rig files and
 scenarios from scenario files, reporting every problem in one with its line, column and JSON
 pointer, and writes and reads replay files, whose numbers read back with the bits they were written
