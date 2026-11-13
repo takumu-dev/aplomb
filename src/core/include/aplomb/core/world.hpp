@@ -24,14 +24,26 @@
 
 namespace aplomb {
 
-/// A host's characters and the Jolt physics system they live in, which the world owns.
+/// A host's characters and the Jolt physics system they live in, which the world either owns or
+/// shares with the host.
 ///
-/// The world steps at a fixed rate. Its physics system's bodies go on the layers in
-/// `aplomb::object_layers`. A moved-from world may only be destroyed or assigned to; anything
-/// else fires an assertion.
+/// The world steps at a fixed rate. A world that owns its physics system steps it in `step()`, and
+/// that physics system's bodies go on the layers in `aplomb::object_layers`. A world attached to
+/// the host's physics system never steps it: the host calls `before_physics_step()`, updates its
+/// physics system once by the world's step duration, then calls `after_physics_step()`, and the
+/// world's characters' parts go on the object layer the host chose for them. The world listens to
+/// the steps of the host's physics system to check them, so Jolt no longer skips an update in which
+/// no body is active.
+///
+/// State hashes and recording, and so replays, are offered only by a world that owns its physics
+/// system. An attached world's state includes the host's bodies, which the world neither creates
+/// nor orders.
+///
+/// A moved-from world may only be destroyed or assigned to; anything else fires an assertion.
 class World {
   public:
-    /// Creates a world that owns a physics system of its own.
+    /// Creates a world that owns a physics system of its own, or one attached to the host's physics
+    /// system when the settings name it.
     ///
     /// Jolt's process-wide setup is the host's to do first: its allocator, its factory and its
     /// registered types.
@@ -49,16 +61,34 @@ class World {
     World(const World&) = delete;
     World& operator=(const World&) = delete;
 
-    /// Destroys the world and its physics system, with every body in it.
+    /// Destroys the world with its characters, taking their bodies and constraints out of the
+    /// physics system. A world that owns its physics system destroys it too, with every body in
+    /// it.
     ~World();
 
-    /// Advances the world by one fixed step: applies the pushes sent since the last step, in the
-    /// order they were sent, steps its physics system once, then reads each character's physics
-    /// pose. A recording world then records the step.
+    /// Advances a world that owns its physics system by one fixed step: applies the pushes sent
+    /// since the last step, in the order they were sent, steps its physics system once, then reads
+    /// each character's physics pose. A recording world then records the step.
     void step();
 
+    /// Begins a step of an attached world, before the host updates its physics system: applies
+    /// the pushes sent since the last step, in the order they were sent.
+    ///
+    /// The host updates its physics system only between this and `after_physics_step()`.
+    void before_physics_step();
+
+    /// Ends a step of an attached world, after the host has updated its physics system: reads each
+    /// character's physics pose.
+    ///
+    /// Since the last `before_physics_step()`, the host has updated its physics system once by the
+    /// world's step duration, `1 / step_rate`, which it may split into collision steps. A host that
+    /// stepped at another rate fires an assertion. Whether the update ran out of room is the
+    /// host's to read from its result.
+    void after_physics_step();
+
     /// Starts recording each step the world takes, with the pushes it applied and its state hash
-    /// after it, discarding any steps recorded before.
+    /// after it, discarding any steps recorded before. Only a world that owns its physics system
+    /// records.
     void start_recording();
 
     /// Stops recording.
@@ -106,17 +136,27 @@ class World {
     ///
     /// Jolt's state recorder saves the state in a fixed order, and the hash is the 64-bit FNV-1a of
     /// what it saves, so the same state gives the same hash on every platform. Two runs that give
-    /// the same hash at every step ran alike.
+    /// the same hash at every step ran alike. Only a world that owns its physics system offers a
+    /// state hash.
     [[nodiscard]] std::uint64_t state_hash() const;
 
-    /// The physics system the world owns, to which the host adds the bodies of its scene.
+    /// The physics system the world's characters live in: the one the world owns, to which the
+    /// host adds the bodies of its scene, or the host's own for an attached world.
     [[nodiscard]] JPH::PhysicsSystem& physics_system();
 
-    /// The physics system the world owns.
+    /// The physics system the world's characters live in.
     [[nodiscard]] const JPH::PhysicsSystem& physics_system() const;
 
   private:
     struct State;
+
+    // Applies the pushes sent since the last step, in the order they were sent, and returns the
+    // step to record, holding the pushes that were applied.
+    RecordedStep apply_pushes();
+
+    // Reads each character's physics pose after its physics system has stepped, and records the
+    // step if the world is recording.
+    void finish_step(RecordedStep recorded);
 
     explicit World(std::unique_ptr<State> state) noexcept;
 

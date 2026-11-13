@@ -13,6 +13,7 @@
 
 #include <Jolt/Physics/Body/BodyID.h>
 #include <Jolt/Physics/Collision/CollisionGroup.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 #include <Jolt/Physics/Ragdoll/Ragdoll.h>
 
@@ -69,10 +70,10 @@ class Character {
               JPH::Ref<JPH::Ragdoll> ragdoll, std::vector<JPH::BodyID> part_bodies);
 
     // Checks the rig, then makes the character's ragdoll in its bind pose, with the rig's space
-    // placed in the world by `root`, and adds it to the physics system.
+    // placed in the world by `root`, and adds it to the physics system with its parts on `layer`.
     [[nodiscard]] static std::expected<Character, CharacterError>
     create(const RigDesc& rig, const Transform& root, JPH::PhysicsSystem& physics_system,
-           JPH::CollisionGroup::GroupID collision_group);
+           JPH::ObjectLayer layer, JPH::CollisionGroup::GroupID collision_group);
 
     // Reads the physics pose from the parts' bodies.
     void update_physics_pose(const JPH::BodyInterface& body_interface);

@@ -4,7 +4,6 @@
 #include <aplomb/core/assertion.hpp>
 #include <aplomb/core/character_error.hpp>
 #include <aplomb/core/joint_desc.hpp>
-#include <aplomb/core/object_layers.hpp>
 #include <aplomb/core/part_desc.hpp>
 #include <aplomb/core/pose.hpp>
 #include <aplomb/core/rig_desc.hpp>
@@ -15,6 +14,7 @@
 
 #include <Jolt/Physics/Body/BodyInterface.h>
 #include <Jolt/Physics/Body/MotionType.h>
+#include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -103,11 +103,12 @@ JPH::Ref<JPH::TwoBodyConstraintSettings> make_constraint(const HingeJointDesc& h
     return settings.GetPtr();
 }
 
-// The ragdoll's settings. Jolt wants each part after its parent part, so the ragdoll's parts are in
-// the order of `parents_first` rather than the rig's.
+// The ragdoll's settings, with every part on `layer`. Jolt wants each part after its parent part,
+// so the ragdoll's parts are in the order of `parents_first` rather than the rig's.
 JPH::Ref<JPH::RagdollSettings> make_ragdoll_settings(const RigDesc& rig,
                                                      const detail::RigStructure& structure,
-                                                     const Transform& root) {
+                                                     const Transform& root,
+                                                     JPH::ObjectLayer layer) {
     const JPH::Ref skeleton = new JPH::Skeleton();
     std::vector<int> ragdoll_index(rig.parts.size());
     for (std::size_t index = 0; index < structure.parents_first.size(); ++index) {
@@ -129,7 +130,7 @@ JPH::Ref<JPH::RagdollSettings> make_ragdoll_settings(const RigDesc& rig,
         ragdoll_part.mPosition = to_world_point(root, part.bind_position);
         ragdoll_part.mRotation = (root.rotation * part.bind_rotation.Normalized()).Normalized();
         ragdoll_part.mMotionType = JPH::EMotionType::Dynamic;
-        ragdoll_part.mObjectLayer = object_layers::moving;
+        ragdoll_part.mObjectLayer = layer;
         ragdoll_part.mOverrideMassProperties = JPH::EOverrideMassProperties::CalculateInertia;
         ragdoll_part.mMassPropertiesOverride.mMass = part.mass;
         ragdoll_part.mFriction = part.friction;
@@ -173,14 +174,15 @@ Character::Character(RigDesc rig, std::vector<std::optional<PartId>> parents,
 
 std::expected<Character, CharacterError>
 Character::create(const RigDesc& rig, const Transform& root, JPH::PhysicsSystem& physics_system,
-                  JPH::CollisionGroup::GroupID collision_group) {
+                  JPH::ObjectLayer layer, JPH::CollisionGroup::GroupID collision_group) {
     APLOMB_ASSERT(root.rotation.IsNormalized(), "a character's root rotation is a unit quaternion");
     auto structure = detail::check_rig(rig);
     if (!structure.has_value()) {
         return std::unexpected(invalid_rig(rig, std::move(structure.error())));
     }
 
-    const JPH::Ref<JPH::RagdollSettings> settings = make_ragdoll_settings(rig, *structure, root);
+    const JPH::Ref<JPH::RagdollSettings> settings =
+        make_ragdoll_settings(rig, *structure, root, layer);
     // Jolt destroys whatever bodies it made of a ragdoll that didn't fit.
     JPH::Ref<JPH::Ragdoll> ragdoll = settings->CreateRagdoll(collision_group, 0, &physics_system);
     if (ragdoll == nullptr) {

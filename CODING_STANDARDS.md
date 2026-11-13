@@ -64,6 +64,8 @@ departs from them, it says so.
   `RegisterTypes()` and its trace and assertion hooks. The host sets them up before it creates a
   world, and a world asserts that it has. The host lends a world its job system and temporary
   allocator too, and a world never starts threads or allocates scratch memory of its own.
+- A world attached to the host's physics system never steps it, and offers no state hash and no
+  recording, since its state includes the host's bodies, which aplomb neither creates nor orders.
 - Apart from the assertion handler and the log sink, all state lives in a world or its characters.
 
 ## Determinism
@@ -244,7 +246,8 @@ state hash its run must end with, one to a file in `tests/golden/`.
   `tests/build/` holds tests of the build itself, named `build:`, and
   `tests/support/` holds what the tests share: Jolt's process-wide
   setup as a host does it, the job system and temporary allocator a host lends a world, with a fixed
-  number of threads, and a log sink that records what it receives. No test opens a window.
+  number of threads, a physics system of a host's own for a world to attach to, and a log sink
+  that records what it receives. No test opens a window.
 - Each test's name begins with the target it tests, matching its Catch2 tag (`[core]`). Each kind of
   test has a helper in `tests/CMakeLists.txt`:
   - `aplomb_add_tests` adds a target's Catch2 test cases, each registered with CTest.

@@ -86,3 +86,22 @@ aplomb_add_precondition_test(core
     SOURCE programs/push_to_unknown_part.cpp
     MESSAGE "the part is one of the character's parts"
 )
+aplomb_add_precondition_test(core
+    "stepping an attached world at a rate other than the world's fires its precondition"
+    SOURCE programs/attached_world_stepped_at_another_rate.cpp
+    MESSAGE "the host steps its physics system once by the world's step duration"
+)
+aplomb_add_precondition_test(core
+    "stepping a host's physics system outside an attached world's step fires its precondition"
+    SOURCE programs/host_update_outside_attached_world_step.cpp
+    MESSAGE "the host steps its physics system only between before_physics_step() and after_physics_step()"
+)
+aplomb_add_precondition_test(core
+    "creating an attached world without an object layer for parts fires its precondition"
+    SOURCE programs/attached_world_without_part_layer.cpp
+    MESSAGE "an attached world is given an object layer for its characters' parts"
+)
+aplomb_add_precondition_test(core "hashing an attached world's state fires its precondition"
+    SOURCE programs/state_hash_of_attached_world.cpp
+    MESSAGE "the world owns its physics system"
+)
