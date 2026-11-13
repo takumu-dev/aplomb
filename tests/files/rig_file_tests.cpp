@@ -22,7 +22,9 @@
 #include <cstddef>
 #include <filesystem>
 #include <format>
+#include <fstream>
 #include <initializer_list>
+#include <ios>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -463,4 +465,38 @@ TEST_CASE("a directory can't be read as a rig file", "[files]") {
     CHECK(rig.error().code == aplomb::FileErrorCode::unreadable);
     CHECK(std::format("{}", rig.error()) ==
           std::format("the rig file \"{}\" can't be read: it isn't a regular file", path.string()));
+}
+
+TEST_CASE("a rig file's hash is the 64-bit FNV-1a of its text", "[files]") {
+    CHECK(aplomb::rig_file_hash("") == 0xcbf29ce484222325);
+    CHECK(aplomb::rig_file_hash("a") == 0xaf63dc4c8601ec8c);
+    CHECK(aplomb::rig_file_hash("foobar") == 0x85944171f73967e8);
+}
+
+TEST_CASE("a rig file's hash is read from its path as its text gives it", "[files]") {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "aplomb_hashed.json";
+    {
+        std::ofstream file(path, std::ios::binary);
+        file << "foobar";
+    }
+
+    const auto hash = aplomb::load_rig_file_hash(path);
+
+    std::filesystem::remove(path);
+    REQUIRE(hash.has_value());
+    CHECK(*hash == 0x85944171f73967e8);
+}
+
+TEST_CASE("the hash of a rig file that doesn't exist can't be read, and the error names it",
+          "[files]") {
+    const std::filesystem::path path =
+        std::filesystem::temp_directory_path() / "aplomb_no_such_rig_file.json";
+
+    const auto hash = aplomb::load_rig_file_hash(path);
+
+    REQUIRE_FALSE(hash.has_value());
+    CHECK(hash.error().code == aplomb::FileErrorCode::unreadable);
+    CHECK(std::format("{}", hash.error()) ==
+          std::format("the rig file \"{}\" can't be read: there is no such file", path.string()));
 }

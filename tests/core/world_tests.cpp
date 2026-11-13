@@ -7,6 +7,8 @@
 #include "scoped_log_sink.hpp"
 #include <aplomb/core/log_sink.hpp>
 #include <aplomb/core/object_layers.hpp>
+#include <aplomb/core/push.hpp>
+#include <aplomb/core/recorded_step.hpp>
 #include <aplomb/core/typed_id.hpp>
 #include <aplomb/core/world_error.hpp>
 #include <aplomb/core/world_settings.hpp>
@@ -357,4 +359,94 @@ TEST_CASE("a push to a character removed before the next step is dropped", "[cor
     unpushed.world.step();
 
     CHECK(chain.world.state_hash() == unpushed.world.state_hash());
+}
+
+TEST_CASE("a recording world records each step's pushes, in the order sent, and its state hash "
+          "after the step",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir chain = chain_in_air(services);
+    const aplomb::PartId shin(2);
+    const aplomb::Push first{
+        .character = chain.character,
+        .part = shin,
+        .world_point = JPH::Vec3(0.0F, 0.3F, 0.05F),
+        .impulse = JPH::Vec3(0.0F, 2.0F, -8.0F),
+    };
+    const aplomb::Push second{
+        .character = chain.character,
+        .part = pelvis,
+        .world_point = JPH::Vec3(0.0F, 0.95F, 0.0F),
+        .impulse = JPH::Vec3(15.0F, 0.0F, 5.0F),
+    };
+
+    chain.world.start_recording();
+    chain.world.push(first.character, first.part, first.world_point, first.impulse);
+    chain.world.push(second.character, second.part, second.world_point, second.impulse);
+    chain.world.step();
+    const std::uint64_t after_first_step = chain.world.state_hash();
+    chain.world.step();
+    const std::uint64_t after_second_step = chain.world.state_hash();
+    const std::vector<aplomb::RecordedStep> steps = chain.world.stop_recording();
+
+    REQUIRE(steps.size() == 2);
+    CHECK(steps[0].pushes == std::vector{first, second});
+    CHECK(steps[0].state_hash == after_first_step);
+    CHECK(steps[1].pushes.empty());
+    CHECK(steps[1].state_hash == after_second_step);
+}
+
+TEST_CASE("a world records only the steps taken while it is recording", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir chain = chain_in_air(services);
+
+    chain.world.step();
+    CHECK(chain.world.stop_recording().empty());
+    chain.world.start_recording();
+    chain.world.step();
+    const std::uint64_t recorded = chain.world.state_hash();
+    const std::vector<aplomb::RecordedStep> steps = chain.world.stop_recording();
+    chain.world.step();
+
+    REQUIRE(steps.size() == 1);
+    CHECK(steps[0].state_hash == recorded);
+    CHECK(chain.world.stop_recording().empty());
+}
+
+TEST_CASE("starting to record again discards the steps recorded before", "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir chain = chain_in_air(services);
+
+    chain.world.start_recording();
+    chain.world.step();
+    chain.world.start_recording();
+    chain.world.step();
+    const std::uint64_t recorded = chain.world.state_hash();
+
+    const std::vector<aplomb::RecordedStep> steps = chain.world.stop_recording();
+    REQUIRE(steps.size() == 1);
+    CHECK(steps[0].state_hash == recorded);
+}
+
+TEST_CASE("a recording world doesn't record a push to a character removed before the step",
+          "[core]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    ChainInAir chain = chain_in_air(services);
+    const auto other = chain.world.add_character(chain_rig(), {});
+    REQUIRE(other.has_value());
+
+    chain.world.start_recording();
+    chain.world.push(chain.character, pelvis, pelvis_position(chain), JPH::Vec3(20.0F, 0.0F, 0.0F));
+    chain.world.push(*other, pelvis, JPH::Vec3::sZero(), JPH::Vec3(0.0F, 0.0F, 3.0F));
+    chain.world.remove_character(chain.character);
+    chain.world.step();
+
+    const std::vector<aplomb::RecordedStep> steps = chain.world.stop_recording();
+    REQUIRE(steps.size() == 1);
+    REQUIRE(steps[0].pushes.size() == 1);
+    CHECK(steps[0].pushes[0].character == *other);
 }

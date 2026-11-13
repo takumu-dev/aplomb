@@ -2,6 +2,7 @@
 
 #include <aplomb/core/rig_problem.hpp>
 #include <aplomb/files/file_problem.hpp>
+#include <aplomb/files/scenario_desc.hpp>
 
 #include <Jolt/Jolt.h>
 
@@ -208,6 +209,22 @@ template <std::size_t Count>
 /// \param file The file.
 /// \return The vector, or nothing if any problem was reported.
 [[nodiscard]] std::optional<JPH::Vec3> read_vector(const Field& field, JsonFile& file);
+
+/// Reads a seed, a whole number from 0 that a `std::uint64_t` holds.
+///
+/// \param field The value.
+/// \param file The file.
+/// \return The seed, or nothing if the value isn't one, which is reported.
+[[nodiscard]] std::optional<std::uint64_t> read_seed(const Field& field, JsonFile& file);
+
+/// Reads how a character starts: an object of a `root_position` and a `pose`, which is `"bind"`.
+///
+/// \param field The value.
+/// \param noun What the object is, such as `initial state`, which messages name it as.
+/// \param file The file.
+/// \return How the character starts, which is what the file gives only if no problem was
+/// reported.
+[[nodiscard]] InitialState read_initial_state(const Field& field, std::string noun, JsonFile& file);
 
 /// Reads the `format` and `version` keys of a file's root object, which every file of aplomb's has.
 ///

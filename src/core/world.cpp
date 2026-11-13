@@ -5,6 +5,8 @@
 #include <aplomb/core/character_error.hpp>
 #include <aplomb/core/log_sink.hpp>
 #include <aplomb/core/object_layers.hpp>
+#include <aplomb/core/push.hpp>
+#include <aplomb/core/recorded_step.hpp>
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/core/transform.hpp>
 #include <aplomb/core/typed_id.hpp>
@@ -131,14 +133,6 @@ class StateHasher final : public JPH::StateRecorder {
     std::uint64_t hash_ = offset_basis;
 };
 
-// A push message, as a world holds it until its next step.
-struct Push {
-    CharacterId character;
-    PartId part;
-    JPH::Vec3 world_point;
-    JPH::Vec3 impulse;
-};
-
 } // namespace
 
 // The physics system keeps pointers to the layer filters, so the state never moves once made. The
@@ -157,6 +151,8 @@ struct World::State {
     std::vector<std::unique_ptr<Character>> characters;
     // The pushes sent since the last step, in the order they were sent.
     std::vector<Push> pushes;
+    bool recording = false;
+    std::vector<RecordedStep> recorded_steps;
 };
 
 std::expected<World, WorldError> World::create(const WorldSettings& settings) {
@@ -201,12 +197,18 @@ World::~World() = default;
 void World::step() {
     APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
     JPH::BodyInterface& body_interface = state_->physics_system.GetBodyInterface();
+    // A recorded step holds the pushes that were applied, so that a push dropped with its
+    // character isn't sent to a character that a replay of the step doesn't have.
+    RecordedStep recorded;
     for (const Push& push : state_->pushes) {
         if (const std::unique_ptr<Character>& character =
                 state_->characters[push.character.index()];
             character != nullptr) {
             body_interface.AddImpulse(character->part_body(push.part), push.impulse,
                                       push.world_point);
+            if (state_->recording) {
+                recorded.pushes.push_back(push);
+            }
         }
     }
     state_->pushes.clear();
@@ -225,6 +227,22 @@ void World::step() {
             character->update_physics_pose(body_interface);
         }
     }
+    if (state_->recording) {
+        recorded.state_hash = state_hash();
+        state_->recorded_steps.push_back(std::move(recorded));
+    }
+}
+
+void World::start_recording() {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    state_->recording = true;
+    state_->recorded_steps.clear();
+}
+
+std::vector<RecordedStep> World::stop_recording() {
+    APLOMB_ASSERT(state_ != nullptr, "the world hasn't been moved from");
+    state_->recording = false;
+    return std::exchange(state_->recorded_steps, {});
 }
 
 std::expected<CharacterId, CharacterError> World::add_character(const RigDesc& rig,

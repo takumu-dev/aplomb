@@ -1,0 +1,3 @@
+# A replay names its rig file by the hash of the file's bytes, so every checkout must give a JSON
+# file the same line endings.
+*.json text eol=lf

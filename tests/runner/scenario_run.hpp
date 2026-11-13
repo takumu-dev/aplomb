@@ -1,8 +1,10 @@
 #pragma once
 
 #include "host_services.hpp"
+#include <aplomb/core/recorded_step.hpp>
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/files/metrics_file.hpp>
+#include <aplomb/files/replay_desc.hpp>
 #include <aplomb/files/scenario_desc.hpp>
 
 #include <cstdint>
@@ -14,7 +16,7 @@
 #include <string_view>
 #include <vector>
 
-/// What kind of failure stopped a scenario from running.
+/// What kind of failure stopped a scenario from running, or a replay from playing back.
 enum class RunErrorCode : std::uint8_t {
     /// The scenario names a scene that doesn't exist.
     unknown_scene,
@@ -25,11 +27,14 @@ enum class RunErrorCode : std::uint8_t {
     /// The scenario's character couldn't be added to the world.
     invalid_character,
 
-    /// The scenario's timeline pushes a part that its rig doesn't have.
+    /// The scenario's timeline, or the replay, pushes a part that its rig doesn't have.
     unknown_part,
+
+    /// The replay pushes a character that it doesn't have.
+    unknown_character,
 };
 
-/// Why a scenario couldn't run.
+/// Why a scenario couldn't run, or a replay couldn't play back.
 struct RunError {
     /// What kind of failure it was.
     RunErrorCode code{};
@@ -70,6 +75,10 @@ struct RunResult {
     /// step n is at index n.
     std::vector<std::uint64_t> state_hashes{};
 
+    /// Each step the world took, as it recorded it: the pushes it applied and its state hash after
+    /// it.
+    std::vector<aplomb::RecordedStep> recorded_steps{};
+
     /// How many NaN values appeared in the parts' states, whether or not the scenario records
     /// nan_count.
     std::uint64_t nan_count = 0;
@@ -79,6 +88,17 @@ struct RunResult {
 
     /// Whether the run passed: every criterion is met, and no NaN appeared.
     [[nodiscard]] bool passed() const noexcept;
+};
+
+/// What playing a replay back gave.
+struct PlaybackResult {
+    /// The world's state hash before the first step and after each one, so that the hash after
+    /// step n is at index n.
+    std::vector<std::uint64_t> state_hashes{};
+
+    /// The first step at which the state hash the replay recorded and the one played back differ,
+    /// the recorded one first, or nothing where every step's agree.
+    std::optional<aplomb::StateHashDifference> first_differing_step{};
 };
 
 /// The first step at which two runs' state hashes differ, if any does.
@@ -107,3 +127,23 @@ first_differing_step(std::span<const std::uint64_t> first, std::span<const std::
                                                               const aplomb::RigDesc& rig,
                                                               float step_rate,
                                                               HostServices& services);
+
+/// The replay of a run of a scenario, which `play_replay` plays back to the run's state hashes.
+///
+/// \param scenario The scenario.
+/// \param rig_file_hash The hash of the rig file the scenario's rig was read from.
+/// \param result What the run gave.
+/// \return The replay, with this build's versions of aplomb and Jolt.
+[[nodiscard]] aplomb::ReplayDesc replay_of(const aplomb::ScenarioDesc& scenario,
+                                           std::uint64_t rig_file_hash, const RunResult& result);
+
+/// Plays a replay back: builds its scene into a world at its step rate, adds its characters made
+/// from the rig, then sends each step's pushes and steps the world, comparing the state hash before
+/// the first step and after each one with the replay's.
+///
+/// \param replay The replay, whose rig file the rig was read from.
+/// \param rig The rig.
+/// \param services The job system and temporary allocator the world is lent.
+/// \return What playing the replay back gave, or why it couldn't be played back.
+[[nodiscard]] std::expected<PlaybackResult, RunError>
+play_replay(const aplomb::ReplayDesc& replay, const aplomb::RigDesc& rig, HostServices& services);

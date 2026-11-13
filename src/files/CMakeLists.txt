@@ -1,7 +1,7 @@
-# aplomb::files, which reads rig files into what the core takes, reads scenario files and writes
-# metrics files, and is the only part of aplomb that opens a file. It links pedantjson privately, so
-# a host that builds its rigs in code, or reads them its own way, never carries a JSON library. Its
-# public headers are included as <aplomb/files/...>.
+# aplomb::files, which reads rig files into what the core takes, reads scenario files, writes metrics
+# files, and writes and reads replay files, and is the only part of aplomb that opens a file. It
+# links pedantjson privately, so a host that builds its rigs in code, or reads them its own way,
+# never carries a JSON library. Its public headers are included as <aplomb/files/...>.
 find_package(pedantjson CONFIG REQUIRED)
 
 add_library(aplomb_files STATIC)
@@ -12,6 +12,7 @@ target_sources(aplomb_files
         json_file.cpp
         json_writing.cpp
         metrics_file.cpp
+        replay_file.cpp
         rig_file.cpp
         scenario_desc.cpp
         scenario_file.cpp
@@ -19,6 +20,8 @@ target_sources(aplomb_files
         include/aplomb/files/file_error.hpp
         include/aplomb/files/file_problem.hpp
         include/aplomb/files/metrics_file.hpp
+        include/aplomb/files/replay_desc.hpp
+        include/aplomb/files/replay_file.hpp
         include/aplomb/files/rig_file.hpp
         include/aplomb/files/scenario_desc.hpp
         include/aplomb/files/scenario_file.hpp

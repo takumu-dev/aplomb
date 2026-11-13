@@ -20,6 +20,7 @@
 
 #include <array>
 #include <cstddef>
+#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>
@@ -293,6 +294,23 @@ std::expected<RigDesc, FileError> parse_rig_file(std::string text, std::string_v
             detail::invalid_file(kind, path, std::move(meaning).take_problems()));
     }
     return rig;
+}
+
+std::uint64_t rig_file_hash(std::string_view text) noexcept {
+    // FNV-1a's constants are fixed by its definition rather than by any library's version.
+    constexpr std::uint64_t offset_basis = 0xcbf29ce484222325;
+    constexpr std::uint64_t prime = 0x100000001b3;
+    std::uint64_t hash = offset_basis;
+    for (const char character : text) {
+        hash = (hash ^ static_cast<unsigned char>(character)) * prime;
+    }
+    return hash;
+}
+
+std::expected<std::uint64_t, FileError> load_rig_file_hash(const std::filesystem::path& path) {
+    return detail::read_text_file(path, kind).transform([](const std::string& text) {
+        return rig_file_hash(text);
+    });
 }
 
 } // namespace aplomb

@@ -99,15 +99,29 @@ endif()
 #   SCENARIO     the scenario file's stem
 #   DETERMINISM  run it twice at each step rate, failing where the two runs' state hashes differ
 #                at any step
+#   REPLAY       record each run as a replay in replays/ in the build directory, and play the replay
+#                back in a test of its own, failing where its state hashes differ at any step
 function(aplomb_add_scenario_test scenario)
-    cmake_parse_arguments(PARSE_ARGV 1 arg "DETERMINISM" "" "")
+    cmake_parse_arguments(PARSE_ARGV 1 arg "DETERMINISM;REPLAY" "" "")
     set(mode run)
     if(arg_DETERMINISM)
         set(mode determinism)
     endif()
     set_property(GLOBAL APPEND PROPERTY APLOMB_SCENARIOS ${scenario})
+    set(scenario_file "${PROJECT_SOURCE_DIR}/tests/scenarios/${scenario}.json")
     set(metrics_dir "${PROJECT_BINARY_DIR}/metrics")
     file(MAKE_DIRECTORY "${metrics_dir}")
+    if(arg_REPLAY)
+        set(replays_dir "${PROJECT_BINARY_DIR}/replays")
+        file(MAKE_DIRECTORY "${replays_dir}")
+        # A replay names its rig file by its hash alone, so playing it back takes the scenario's.
+        file(READ "${scenario_file}" scenario_text)
+        string(JSON rig GET "${scenario_text}" rig)
+        cmake_path(ABSOLUTE_PATH rig BASE_DIRECTORY "${PROJECT_SOURCE_DIR}/tests/scenarios"
+            NORMALIZE
+        )
+        set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${scenario_file}")
+    endif()
     foreach(rate IN LISTS APLOMB_SCENARIO_STEP_RATES)
         set(name "scenarios: ${scenario} at ${rate} Hz")
         set(golden_options "")
@@ -127,11 +141,26 @@ function(aplomb_add_scenario_test scenario)
                 )
             endif()
         endif()
+        set(replay_options "")
+        if(arg_REPLAY)
+            set(replay "${replays_dir}/${scenario}_${rate}hz.json")
+            set(replay_options --replay "${replay}")
+        endif()
         add_test(NAME "${name}"
-            COMMAND aplomb_runner ${mode} "${PROJECT_SOURCE_DIR}/tests/scenarios/${scenario}.json"
+            COMMAND aplomb_runner ${mode} "${scenario_file}"
                 --step-rate ${rate} --metrics "${metrics_dir}/${scenario}_${rate}hz.json"
-                ${golden_options}
+                ${golden_options} ${replay_options}
         )
+        if(arg_REPLAY)
+            set_tests_properties("${name}" PROPERTIES FIXTURES_SETUP "${name} replay")
+            add_test(NAME "${name} plays back from its replay"
+                COMMAND aplomb_runner replay "${replay}" --rig "${rig}"
+                    --metrics "${metrics_dir}/${scenario}_${rate}hz_replayed.json"
+            )
+            set_tests_properties("${name} plays back from its replay" PROPERTIES
+                FIXTURES_REQUIRED "${name} replay"
+            )
+        endif()
     endforeach()
 endfunction()
 

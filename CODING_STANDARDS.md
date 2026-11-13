@@ -50,9 +50,10 @@ departs from them, it says so.
   world and everything that controls a character. Its parts stay directories inside it, not
   targets, since they run as one ordered step. Its public headers sit under
   `src/core/include/aplomb/core/`, and its private headers beside its sources.
-- `aplomb::files`, in `src/files/`, reads rig files into what the core takes, reads scenario files
-  and writes metrics files, and is the only target that opens a file. It links the core, and
-  pedantjson privately, so that a host that builds its rigs in code never carries a JSON library.
+- `aplomb::files`, in `src/files/`, reads rig files into what the core takes, reads scenario files,
+  writes metrics files, and writes and reads replay files, and is the only target that opens a
+  file. It links the core, and pedantjson privately, so that a host that builds its rigs in code
+  never carries a JSON library.
 - `aplomb::scenes`, in `src/scenes/`, builds scenes in code, such as `flat_ground`, into a world's
   physics system, each also by the name a scenario file gives it. It links the core, and the
   library a host ships never depends on it.
@@ -259,7 +260,9 @@ state hash its run must end with, one to a file in `tests/golden/`.
   - `aplomb_add_scenario_test` adds a scenario file of `tests/scenarios/`, which `aplomb_runner`
     runs at 60 Hz and at 120 Hz, checking its golden hash where `APLOMB_GOLDEN_HASHES` is on. With
     `DETERMINISM`, it runs the scenario twice at each rate, and fails naming the first step at
-    which the two runs' state hashes differ.
+    which the two runs' state hashes differ. With `REPLAY`, it records each run as a replay, to
+    `replays/` in the build directory, and plays the replay back in a test of its own, which fails
+    naming the first step at which its state hashes differ from those played back.
   - `aplomb_add_script_test` adds a CMake script that tests the build's own CMake code, such as
     the licence check on the fake vcpkg trees of `tests/build/licenses/`, through
     `tests/support/check_program.cmake` too.
