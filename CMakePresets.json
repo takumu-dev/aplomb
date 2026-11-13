@@ -17,7 +17,7 @@
       "cacheVariables": {
         "CMAKE_COMPILE_WARNING_AS_ERROR": true,
         "CMAKE_EXPORT_COMPILE_COMMANDS": true,
-        "VCPKG_MANIFEST_FEATURES": "tests"
+        "VCPKG_MANIFEST_FEATURES": "tests;sandbox"
       }
     },
     {

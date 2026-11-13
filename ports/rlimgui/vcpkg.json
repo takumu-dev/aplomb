@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "rlimgui",
+  "version-date": "2026-08-24",
+  "description": "A Dear ImGui backend for raylib, built without its Font Awesome icons",
+  "homepage": "https://github.com/raylib-extras/rlImGui",
+  "license": "Zlib",
+  "dependencies": [
+    "imgui",
+    "raylib",
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    }
+  ]
+}
