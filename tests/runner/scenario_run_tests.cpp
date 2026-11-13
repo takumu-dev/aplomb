@@ -4,10 +4,14 @@
 #include "jolt_runtime.hpp"
 #include "required.hpp"
 #include "rigs.hpp"
+#include <aplomb/core/push.hpp>
+#include <aplomb/core/recorded_step.hpp>
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/core/typed_id.hpp>
+#include <aplomb/core/version.hpp>
 #include <aplomb/core/world.hpp>
 #include <aplomb/files/metrics_file.hpp>
+#include <aplomb/files/replay_desc.hpp>
 #include <aplomb/files/scenario_desc.hpp>
 #include <aplomb/scenes/flat_ground.hpp>
 
@@ -46,8 +50,30 @@ aplomb::TimelinePush pelvis_push(float time) {
     return {.time = time, .part = "pelvis", .impulse = JPH::Vec3(20.0F, 0.0F, 0.0F)};
 }
 
-std::string error_of(const std::expected<RunResult, RunError>& result) {
+template <typename T> std::string error_of(const std::expected<T, RunError>& result) {
     return result.has_value() ? std::string() : std::format("{}", result.error());
+}
+
+// The steps of a run that applied pushes, counting from 1.
+std::vector<std::uint64_t> steps_with_pushes(const RunResult& result) {
+    std::vector<std::uint64_t> steps;
+    for (std::uint64_t step = 1; const aplomb::RecordedStep& recorded : result.recorded_steps) {
+        if (!recorded.pushes.empty()) {
+            steps.push_back(step);
+        }
+        ++step;
+    }
+    return steps;
+}
+
+// The replay of a run of the chain dropped and pushed in the pelvis at 60 Hz.
+aplomb::ReplayDesc pushed_chain_replay(HostServices& services) {
+    aplomb::ScenarioDesc scenario = chain_drop();
+    scenario.timeline = {pelvis_push(0.5F)};
+    const auto result = run_scenario(scenario, chain_rig(), 60.0F, services);
+    INFO(error_of(result));
+    REQUIRE(result.has_value());
+    return replay_of(scenario, 0x0123456789abcdef, *result);
 }
 
 } // namespace
@@ -358,4 +384,163 @@ TEST_CASE("a push within half a step of the end of its run is sent before the la
     const std::optional<aplomb::StateHashDifference> difference =
         first_differing_step(with_push->state_hashes, without->state_hashes);
     CHECK(required(difference).step == 60);
+}
+
+TEST_CASE("a run records each step's pushes and its state hash after it", "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ScenarioDesc scenario = chain_drop();
+    scenario.timeline = {pelvis_push(0.5F)};
+
+    const auto result = run_scenario(scenario, chain_rig(), 60.0F, services);
+
+    INFO(error_of(result));
+    REQUIRE(result.has_value());
+    std::vector<std::uint64_t> recorded_hashes{result->state_hashes.front()};
+    for (const aplomb::RecordedStep& recorded : result->recorded_steps) {
+        recorded_hashes.push_back(recorded.state_hash);
+    }
+    CHECK(recorded_hashes == result->state_hashes);
+    // Sent after 30 steps, the push is applied at the start of the 31st.
+    REQUIRE(steps_with_pushes(*result) == std::vector<std::uint64_t>{31});
+    REQUIRE(result->recorded_steps[30].pushes.size() == 1);
+    const aplomb::Push& push = result->recorded_steps[30].pushes[0];
+    CHECK(push.part == aplomb::PartId(0));
+    CHECK(push.impulse == JPH::Vec3(20.0F, 0.0F, 0.0F));
+}
+
+TEST_CASE("a run's replay holds the versions, the rig file's hash, the step rate, the seed, the "
+          "scene and the initial state it ran from, and each step it took",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ScenarioDesc scenario = chain_drop();
+    scenario.seed = 42;
+    scenario.timeline = {pelvis_push(0.5F)};
+    const auto result = run_scenario(scenario, chain_rig(), 120.0F, services);
+    INFO(error_of(result));
+    REQUIRE(result.has_value());
+
+    const aplomb::ReplayDesc replay = replay_of(scenario, 0x0123456789abcdef, *result);
+
+    CHECK(replay.aplomb_version == aplomb::version());
+    CHECK(replay.jolt_version == aplomb::jolt_version());
+    CHECK(replay.rig_file_hash == 0x0123456789abcdef);
+    CHECK(replay.step_rate == 120.0F);
+    CHECK(replay.seed == 42);
+    CHECK(replay.scene == "flat_ground");
+    REQUIRE(replay.initial.characters.size() == 1);
+    CHECK(replay.initial.characters[0].root_position == scenario.initial.root_position);
+    CHECK(replay.initial.state_hash == result->state_hashes[0]);
+    CHECK(replay.steps == result->recorded_steps);
+}
+
+TEST_CASE("a run's replay plays back to the same state hash at every step", "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ScenarioDesc scenario = chain_drop();
+    scenario.timeline = {pelvis_push(0.5F)};
+    const auto run = run_scenario(scenario, chain_rig(), 60.0F, services);
+    INFO(error_of(run));
+    REQUIRE(run.has_value());
+
+    const auto played = play_replay(replay_of(scenario, 0, *run), chain_rig(), services);
+
+    INFO(error_of(played));
+    REQUIRE(played.has_value());
+    CHECK(played->state_hashes == run->state_hashes);
+    CHECK_FALSE(played->first_differing_step.has_value());
+}
+
+TEST_CASE("a replay whose recorded state hash differs from the played back one fails at the "
+          "first step where they differ, with both hashes",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ReplayDesc replay = pushed_chain_replay(services);
+    const std::uint64_t played_back = replay.steps[40].state_hash;
+    replay.steps[40].state_hash = 1;
+    replay.steps[50].state_hash = 2;
+
+    const auto played = play_replay(replay, chain_rig(), services);
+
+    INFO(error_of(played));
+    REQUIRE(played.has_value());
+    const aplomb::StateHashDifference& difference = required(played->first_differing_step);
+    CHECK(difference.step == 41);
+    CHECK(difference.state_hashes == std::array<std::uint64_t, 2>{1, played_back});
+}
+
+TEST_CASE("a replay whose initial state hash differs from the played back one fails before the "
+          "first step",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ReplayDesc replay = pushed_chain_replay(services);
+    replay.initial.state_hash = 1;
+
+    const auto played = play_replay(replay, chain_rig(), services);
+
+    INFO(error_of(played));
+    REQUIRE(played.has_value());
+    CHECK(required(played->first_differing_step).step == 0);
+}
+
+TEST_CASE("a replay sends its pushes, so one played back without its push differs from the step "
+          "the push was applied at",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ReplayDesc replay = pushed_chain_replay(services);
+    replay.steps[30].pushes.clear();
+
+    const auto played = play_replay(replay, chain_rig(), services);
+
+    INFO(error_of(played));
+    REQUIRE(played.has_value());
+    CHECK(required(played->first_differing_step).step == 31);
+}
+
+TEST_CASE("a replay that pushes a part its rig doesn't have can't be played back, and the error "
+          "names the step and the part",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ReplayDesc replay = pushed_chain_replay(services);
+    replay.steps[30].pushes[0].part = aplomb::PartId(3);
+
+    const auto played = play_replay(replay, chain_rig(), services);
+
+    REQUIRE_FALSE(played.has_value());
+    CHECK(played.error().code == RunErrorCode::unknown_part);
+    CHECK(std::format("{}", played.error()) ==
+          R"(step 31 of the replay pushes part 3, but the rig "chain" has 3 parts)");
+}
+
+TEST_CASE("a replay that pushes a character it doesn't have can't be played back, and the error "
+          "names the step and the character",
+          "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ReplayDesc replay = pushed_chain_replay(services);
+    replay.steps[30].pushes[0].character = aplomb::CharacterId(1);
+
+    const auto played = play_replay(replay, chain_rig(), services);
+
+    REQUIRE_FALSE(played.has_value());
+    CHECK(played.error().code == RunErrorCode::unknown_character);
+    CHECK(std::format("{}", played.error()) ==
+          "step 31 of the replay pushes character 1, but the replay has 1 character");
+}
+
+TEST_CASE("a replay of a scene that doesn't exist can't be played back", "[runner]") {
+    const JoltRuntime runtime;
+    HostServices services;
+    aplomb::ReplayDesc replay = pushed_chain_replay(services);
+    replay.scene = "moon";
+
+    const auto played = play_replay(replay, chain_rig(), services);
+
+    REQUIRE_FALSE(played.has_value());
+    CHECK(played.error().code == RunErrorCode::unknown_scene);
 }

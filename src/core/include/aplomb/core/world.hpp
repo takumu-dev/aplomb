@@ -5,6 +5,7 @@
 
 #include <aplomb/core/character.hpp>
 #include <aplomb/core/character_error.hpp>
+#include <aplomb/core/recorded_step.hpp>
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/core/transform.hpp>
 #include <aplomb/core/typed_id.hpp>
@@ -19,6 +20,7 @@
 #include <cstdint>
 #include <expected>
 #include <memory>
+#include <vector>
 
 namespace aplomb {
 
@@ -52,8 +54,18 @@ class World {
 
     /// Advances the world by one fixed step: applies the pushes sent since the last step, in the
     /// order they were sent, steps its physics system once, then reads each character's physics
-    /// pose.
+    /// pose. A recording world then records the step.
     void step();
+
+    /// Starts recording each step the world takes, with the pushes it applied and its state hash
+    /// after it, discarding any steps recorded before.
+    void start_recording();
+
+    /// Stops recording.
+    ///
+    /// \return The steps recorded since recording started, in order, or none if the world wasn't
+    /// recording.
+    [[nodiscard]] std::vector<RecordedStep> stop_recording();
 
     /// Adds a character made from a rig, in the rig's bind pose, as a passive ragdoll.
     ///

@@ -3,6 +3,7 @@
 #include <aplomb/core/assertion.hpp>
 #include <aplomb/core/rig_problem.hpp>
 #include <aplomb/files/file_problem.hpp>
+#include <aplomb/files/scenario_desc.hpp>
 
 #include <Jolt/Jolt.h>
 
@@ -15,6 +16,7 @@
 #include <cstdint>
 #include <expected>
 #include <format>
+#include <limits>
 #include <map>
 #include <optional>
 #include <ranges>
@@ -240,6 +242,43 @@ std::optional<JPH::Vec3> read_vector(const Field& field, JsonFile& file) {
     return read_numbers<3>(field, file).transform([](const std::array<float, 3>& numbers) {
         return JPH::Vec3(numbers[0], numbers[1], numbers[2]);
     });
+}
+
+std::optional<std::uint64_t> read_seed(const Field& field, JsonFile& file) {
+    const std::optional<pedantjson::Number> number = field.value.as_number();
+    if (!number.has_value()) {
+        report_wrong_type(field, "a number", file);
+        return std::nullopt;
+    }
+    const auto seed = number->to<std::uint64_t>();
+    if (!seed.has_value()) {
+        file.report_at(field, FileProblemCode::invalid_value,
+                       std::format("the seed must be a whole number from 0 to {}, not {}",
+                                   std::numeric_limits<std::uint64_t>::max(), number->text()));
+        return std::nullopt;
+    }
+    return *seed;
+}
+
+InitialState read_initial_state(const Field& field, std::string noun, JsonFile& file) {
+    InitialState initial;
+    std::optional<ObjectReader> reader = read_object(field, noun, file);
+    if (!reader.has_value()) {
+        return initial;
+    }
+    read_into(reader->take("root_position"), initial.root_position, read_vector, file);
+    if (const std::optional<Field> pose = reader->take("pose")) {
+        const std::optional<std::string> name = read_string(*pose, file);
+        if (name == "bind") {
+            initial.pose = InitialPose::bind;
+        } else if (name.has_value()) {
+            file.report_at(*pose, FileProblemCode::invalid_value,
+                           std::format(R"(the pose of {} {} is "bind", not "{}")",
+                                       article_for(noun), noun, *name));
+        }
+    }
+    reader->finish();
+    return initial;
 }
 
 std::optional<std::uint32_t> read_format_and_version(ObjectReader& root, std::string_view kind,

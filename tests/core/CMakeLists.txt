@@ -5,11 +5,13 @@ aplomb_add_tests(core
         character_tests.cpp
         log_sink_tests.cpp
         rig_problem_tests.cpp
+        version_tests.cpp
         world_tests.cpp
     LIBRARIES
         aplomb::core
         aplomb::scenes
 )
+target_compile_definitions(aplomb_core_tests PRIVATE APLOMB_PROJECT_VERSION="${PROJECT_VERSION}")
 
 aplomb_add_program_test(core "the default log sink writes each message to stderr with its severity"
     SOURCE programs/default_log_sink.cpp

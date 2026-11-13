@@ -15,12 +15,10 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
-#include <cstdint>
 #include <expected>
 #include <filesystem>
 #include <format>
 #include <functional>
-#include <limits>
 #include <optional>
 #include <ranges>
 #include <string>
@@ -62,22 +60,6 @@ std::string choices(const std::array<T, Count>& values, std::string_view (*name)
     return text;
 }
 
-std::optional<std::uint64_t> read_seed(const Field& field, JsonFile& file) {
-    const std::optional<pedantjson::Number> number = field.value.as_number();
-    if (!number.has_value()) {
-        detail::report_wrong_type(field, "a number", file);
-        return std::nullopt;
-    }
-    const auto seed = number->to<std::uint64_t>();
-    if (!seed.has_value()) {
-        file.report_at(field, FileProblemCode::invalid_value,
-                       std::format("the seed must be a whole number from 0 to {}, not {}",
-                                   std::numeric_limits<std::uint64_t>::max(), number->text()));
-        return std::nullopt;
-    }
-    return *seed;
-}
-
 // Reads the structure of a scenario file into a scenario. Each part of the reader fills in what it
 // can and reports what it can't, so that one pass finds every problem; the scenario is used only
 // if none was reported.
@@ -103,9 +85,9 @@ class ScenarioFileReader {
         detail::read_into(root->take("rig"), scenario.rig, detail::read_string, file_);
         detail::read_into(root->take("scene"), scenario.scene, detail::read_string, file_);
         detail::read_into(root->take("duration_s"), scenario.duration, detail::read_number, file_);
-        detail::read_into(root->take("seed"), scenario.seed, read_seed, file_);
+        detail::read_into(root->take("seed"), scenario.seed, detail::read_seed, file_);
         if (const std::optional<Field> initial = root->take("initial")) {
-            scenario.initial = read_initial(*initial);
+            scenario.initial = detail::read_initial_state(*initial, "initial state", file_);
         }
         if (const std::optional<Field> timeline = root->take("timeline")) {
             scenario.timeline = read_timeline(*timeline);
@@ -121,29 +103,6 @@ class ScenarioFileReader {
     }
 
   private:
-    InitialState read_initial(const Field& field) {
-        InitialState initial;
-        std::optional<detail::ObjectReader> reader =
-            detail::read_object(field, "initial state", file_);
-        if (!reader.has_value()) {
-            return initial;
-        }
-        detail::read_into(reader->take("root_position"), initial.root_position, detail::read_vector,
-                          file_);
-        if (const std::optional<Field> pose = reader->take("pose")) {
-            const std::optional<std::string> name = detail::read_string(*pose, file_);
-            if (name == "bind") {
-                initial.pose = InitialPose::bind;
-            } else if (name.has_value()) {
-                file_.get().report_at(
-                    *pose, FileProblemCode::invalid_value,
-                    std::format(R"(the pose of an initial state is "bind", not "{}")", *name));
-            }
-        }
-        reader->finish();
-        return initial;
-    }
-
     // Version 1 knows one message, a push. An entry whose message isn't known can't have its other
     // keys checked, so its reader doesn't finish.
     std::vector<TimelinePush> read_timeline(const Field& field) {

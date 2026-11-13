@@ -5,6 +5,8 @@
 #   SCENARIO   the scenario's name
 #   STEP_RATE  the step rate, as the file writes it
 #   NAMES      the metrics' names, as a list
+#   FIRST_DIFFERING_STEP
+#              the first step at which two runs differed, if the file must give one
 
 file(READ "${METRICS}" text)
 message("${METRICS}:\n${text}")
@@ -32,4 +34,13 @@ if(count GREATER 0)
 endif()
 if(NOT names STREQUAL NAMES)
     message(FATAL_ERROR "The metrics file should have given ${NAMES}, not ${names}")
+endif()
+
+if(DEFINED FIRST_DIFFERING_STEP)
+    string(JSON step GET "${text}" first_differing_step step)
+    if(NOT step STREQUAL FIRST_DIFFERING_STEP)
+        message(FATAL_ERROR
+            "The metrics file's first differing step should have been ${FIRST_DIFFERING_STEP}, not "
+            "${step}")
+    endif()
 endif()
