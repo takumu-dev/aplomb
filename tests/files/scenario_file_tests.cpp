@@ -93,6 +93,12 @@ std::vector<std::string> describe(const aplomb::ScenarioDesc& scenario) {
         std::format("root position [{}, {}, {}]", root.GetX(), root.GetY(), root.GetZ()),
         scenario.initial.pose == aplomb::InitialPose::bind ? "bind pose" : "another pose",
     };
+    for (const aplomb::TimelinePush& push : scenario.timeline) {
+        lines.push_back(std::format("push at {} s {} at [{}, {}, {}] by [{}, {}, {}]", push.time,
+                                    push.part, push.point.GetX(), push.point.GetY(),
+                                    push.point.GetZ(), push.impulse.GetX(), push.impulse.GetY(),
+                                    push.impulse.GetZ()));
+    }
     for (const aplomb::Metric metric : scenario.metrics) {
         lines.push_back(std::format("metric {}", aplomb::metric_name(metric)));
     }
@@ -141,6 +147,24 @@ TEST_CASE("a scenario file is read into the scenario it describes", "[files]") {
                                  });
 }
 
+TEST_CASE("a scenario file's timeline is read into pushes, in the order of the file", "[files]") {
+    constexpr std::string_view timeline = R"("timeline": [
+    {"t": 2, "message": "push", "part": "thigh", "point": [0, -0.1, 0], "impulse": [0, 0, -5]},
+    {"t": 0.5, "message": "push", "part": "pelvis", "point": [0, 0.1, 0], "impulse": [20, 0, 0]}
+  ])";
+    const auto scenario =
+        aplomb::parse_scenario_file(drop_file_with({{R"("timeline": [])", timeline}}), "drop.json");
+
+    INFO((scenario.has_value() ? std::string() : std::format("{}", scenario.error())));
+    REQUIRE(scenario.has_value());
+    std::vector<std::string> pushes = describe(*scenario);
+    std::erase_if(pushes, [](const std::string& line) { return !line.starts_with("push "); });
+    CHECK(pushes == std::vector<std::string>{
+                        "push at 2 s thigh at [0, -0.1, 0] by [0, 0, -5]",
+                        "push at 0.5 s pelvis at [0, 0.1, 0] by [20, 0, 0]",
+                    });
+}
+
 TEST_CASE("each mistake in a scenario file's syntax or structure is one problem, with its line, "
           "column and JSON pointer",
           "[files]") {
@@ -170,9 +194,21 @@ TEST_CASE("each mistake in a scenario file's syntax or structure is one problem,
          11, 50, "/metrics/2"},
         {"metrics that aren't an array", R"(["max_speed_after_3s", "nan_count"])", R"("nan_count")",
          wrong_type, 11, 14, "/metrics"},
-        {"a message in the timeline", R"("timeline": [])",
-         R"("timeline": [{"t": 1, "message": "push"}])", invalid_value, 10, 36,
+        {"a message that doesn't exist", R"("timeline": [])",
+         R"("timeline": [{"t": 1, "message": "hit"}])", invalid_value, 10, 36,
          "/timeline/0/message"},
+        {"a push without a point", R"("timeline": [])",
+         R"("timeline": [{"t": 1, "message": "push", "part": "pelvis", "impulse": [20, 0, 0]}])",
+         missing_key, 10, 16, "/timeline/0/point"},
+        {"a push with a key it doesn't have", R"("timeline": [])",
+         R"("timeline": [{"t": 1, "message": "push", "part": "pelvis", "point": [0, 0.1, 0], "impulse": [20, 0, 0], "strength": 1}])",
+         unknown_key, 10, 107, "/timeline/0/strength"},
+        {"a push's impulse of two numbers", R"("timeline": [])",
+         R"("timeline": [{"t": 1, "message": "push", "part": "pelvis", "point": [0, 0.1, 0], "impulse": [20, 0]}])",
+         wrong_length, 10, 95, "/timeline/0/impulse"},
+        {"a push's time that is a string", R"("timeline": [])",
+         R"("timeline": [{"t": "1", "message": "push", "part": "pelvis", "point": [0, 0.1, 0], "impulse": [20, 0, 0]}])",
+         wrong_type, 10, 22, "/timeline/0/t"},
         {"a timeline entry without a message", R"("timeline": [])", R"("timeline": [{"t": 1}])",
          missing_key, 10, 16, "/timeline/0/message"},
         {"a pass criterion of the final state hash, which a golden hash checks instead",
@@ -203,6 +239,15 @@ TEST_CASE("each mistake in what a scenario file describes is one problem, at the
          R"("duration_s": 2.5)", invalid_value, 11, 15, "/metrics/0"},
         {"an empty rig path", R"("../rigs/chain.json")", R"("")", invalid_value, 5, 10, "/rig"},
         {"an empty scene", R"("flat_ground")", R"("")", invalid_value, 6, 12, "/scene"},
+        {"a push before the run begins", R"("timeline": [])",
+         R"("timeline": [{"t": -1, "message": "push", "part": "pelvis", "point": [0, 0.1, 0], "impulse": [20, 0, 0]}])",
+         invalid_value, 10, 22, "/timeline/0/t"},
+        {"a push at the end of the run", R"("timeline": [])",
+         R"("timeline": [{"t": 5, "message": "push", "part": "pelvis", "point": [0, 0.1, 0], "impulse": [20, 0, 0]}])",
+         invalid_value, 10, 22, "/timeline/0/t"},
+        {"a push to a part with no name", R"("timeline": [])",
+         R"("timeline": [{"t": 1, "message": "push", "part": "", "point": [0, 0.1, 0], "impulse": [20, 0, 0]}])",
+         invalid_value, 10, 52, "/timeline/0/part"},
         {"a pass criterion of a metric that isn't recorded",
          R"(["max_speed_after_3s", "nan_count"])", R"(["max_speed_after_3s"])", invalid_value, 14,
          18, "/pass/nan_count"},
