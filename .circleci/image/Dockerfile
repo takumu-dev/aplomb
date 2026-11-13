@@ -1,5 +1,7 @@
 # The image every Linux job of aplomb's CI runs in, for x86-64 and ARM64 alike: the floor compilers,
-# GCC 16 and Clang 23 with libstdc++, clang-format and clang-tidy, and the tools a preset needs.
+# GCC 16 and Clang 23 with libstdc++, clang-format and clang-tidy, and the tools a preset needs,
+# with the headers of the X11 and OpenGL libraries that the sandbox's window is built against. No
+# job opens a window.
 #
 # It is published as ghcr.io/takumu-dev/aplomb-ci, tagged with the git tree hash of this directory,
 # and built only when that tag is missing. Any change here is a new image under a new tag, so a
@@ -34,6 +36,12 @@ RUN apt-get update \
         ccache \
         git \
         jq \
+        libgl-dev \
+        libx11-dev \
+        libxcursor-dev \
+        libxi-dev \
+        libxinerama-dev \
+        libxrandr-dev \
         ninja-build \
         pkg-config \
         tar \
