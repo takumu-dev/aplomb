@@ -10,6 +10,9 @@ target_link_libraries(aplomb_runner_support
     PUBLIC aplomb::core aplomb::files aplomb::scenes aplomb_test_support
 )
 aplomb_target_warnings(aplomb_runner_support)
+# The run works out where a timeline's pushes land in the world, so its arithmetic has to round the
+# same on every target for a scenario's state hash to.
+aplomb_target_deterministic_floating_point(aplomb_runner_support)
 
 aplomb_add_tests(runner
     SOURCES

@@ -53,23 +53,31 @@ function(aplomb_target_warnings target)
     endif()
 endfunction()
 
-# Applies the settings of the library's own code: the strict warnings, and floating point that
-# gives the same results with every compiler, as Jolt's deterministic build does. Floating-point
-# operations are never fused into multiply-adds, which some targets round differently, and never
-# reordered by fast math. With APLOMB_EXCEPTIONS off, exceptions are disabled too, so that a stray
-# throw or try fails to compile. The tests use only the warnings.
-function(aplomb_target_conventions target)
-    aplomb_target_warnings(${target})
+# Makes floating point give the same results with every compiler and on every target, as Jolt's
+# deterministic build does. Floating-point operations are never fused into multiply-adds, which some
+# targets round differently, and never reordered by fast math. Code that works out what it feeds
+# the physics, as well as the library, needs it, or the state it reaches differs from target to
+# target.
+function(aplomb_target_deterministic_floating_point target)
     if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
         target_compile_options(${target} PRIVATE /fp:precise)
-        if(NOT APLOMB_EXCEPTIONS)
-            message(FATAL_ERROR "APLOMB_EXCEPTIONS can be turned off with GCC and Clang alone.")
-        endif()
     else()
         target_compile_options(${target} PRIVATE -ffp-contract=off -fno-fast-math)
-        if(NOT APLOMB_EXCEPTIONS)
-            target_compile_options(${target} PRIVATE -fno-exceptions)
+    endif()
+endfunction()
+
+# Applies the settings of the library's own code: the strict warnings, and deterministic floating
+# point. With APLOMB_EXCEPTIONS off, exceptions are disabled too, so that a stray throw or try fails
+# to compile. The tests use only the warnings, and deterministic floating point where they work out
+# what they feed the physics.
+function(aplomb_target_conventions target)
+    aplomb_target_warnings(${target})
+    aplomb_target_deterministic_floating_point(${target})
+    if(NOT APLOMB_EXCEPTIONS)
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+            message(FATAL_ERROR "APLOMB_EXCEPTIONS can be turned off with GCC and Clang alone.")
         endif()
+        target_compile_options(${target} PRIVATE -fno-exceptions)
     endif()
 endfunction()
 
