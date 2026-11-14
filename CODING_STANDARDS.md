@@ -23,7 +23,7 @@ departs from them, it says so.
   `linux-arm64-release` (the same preset on ARM64) and `lint`. Together they are the `ci` check.
 - The build only finds its dependencies with `find_package`, and never downloads anything, so a host
   can supply them through any package manager or none. aplomb's own builds take them from the vcpkg
-  manifest, with test-only ports in its `tests` feature.
+  manifest, with test-only ports in its `tests` feature and the sandbox's in its `sandbox` feature.
 - A dependency must be under one of these licences: Zlib, MIT, BSD-2-Clause, BSD-3-Clause, BSL-1.0,
   ISC, Apache-2.0 with or without the LLVM exception, CC0-1.0 or Unlicense. A host can then ship
   under any terms. Build tools are held to the list too, though nothing of them ships. Configuring
@@ -41,6 +41,11 @@ departs from them, it says so.
 - pedantjson comes from the overlay port in `ports/pedantjson/`, its own repository's port, until
   vcpkg's registry carries it. The port tracks pedantjson's releases, and moving to another is a
   `build(deps)` commit of its own too.
+- The sandbox's raylib comes from the overlay port in `ports/raylib/`, which builds it with the GLFW
+  it bundles against the system's X11 and OpenGL, rather than with vcpkg's X11 ports, whose
+  licences are outside the list, and without audio. rlImGui comes from the overlay port in
+  `ports/rlimgui/`, pinned to a commit, since it has no releases, and built without its icon font,
+  whose licence is outside the list too.
 
 ## Targets
 
@@ -57,6 +62,12 @@ departs from them, it says so.
 - `aplomb::scenes`, in `src/scenes/`, builds scenes in code, such as `flat_ground`, into a world's
   physics system, each also by the name a scenario file gives it. It links the core, and the
   library a host ships never depends on it.
+- The sandbox, `aplomb_sandbox` in `src/sandbox/`, is a viewer for watching characters, and an
+  application rather than a library. It uses only the public interfaces of the core,
+  `aplomb::files` and `aplomb::scenes`, so that it is a host like any other. It draws through the
+  `DebugDraw` interface in `debug_draw/`, and only that interface's raylib backend includes raylib;
+  its panels, in `panels/`, use Dear ImGui. Its dependencies are in the vcpkg manifest's `sandbox`
+  feature, and `APLOMB_BUILD_SANDBOX` turns it off.
 - A target includes only the headers of what it links, since each public include tree comes only
   with its library. Jolt's types may appear in the core's public headers, since aplomb is built on
   Jolt alone.
@@ -247,7 +258,8 @@ state hash its run must end with, one to a file in `tests/golden/`.
   `tests/support/` holds what the tests share: Jolt's process-wide
   setup as a host does it, the job system and temporary allocator a host lends a world, with a fixed
   number of threads, a physics system of a host's own for a world to attach to, and a log sink
-  that records what it receives. No test opens a window.
+  that records what it receives. No test opens a window, and the sandbox, which is checked by hand,
+  has no tests.
 - Each test's name begins with the target it tests, matching its Catch2 tag (`[core]`). Each kind of
   test has a helper in `tests/CMakeLists.txt`:
   - `aplomb_add_tests` adds a target's Catch2 test cases, each registered with CTest.

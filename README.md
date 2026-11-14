@@ -21,8 +21,16 @@ runs a scenario with no window at the step rate it is given, writes what it meas
 file, and fails when the scenario's pass criteria do, when its final state hash isn't its golden
 hash, or, run twice, when the two runs' state hashes differ at any step. It records a run as a
 replay, and plays a replay back, failing at the first step whose state hash differs from the
-replay's; the scenarios in `tests/scenarios/` run at 60 Hz and 120 Hz with the tests. How the code
-is written is in `CODING_STANDARDS.md`.
+replay's; the scenarios in `tests/scenarios/` run at 60 Hz and 120 Hz with the tests.
+
+The sandbox, `aplomb_sandbox`, is a window onto a world on flat ground. It loads a rig file, the
+humanoid rig by default or the one its command line names, adds characters made from it and removes
+them, and lets you watch them fall from any side: drag with the right mouse button to orbit, with
+the middle button or shift and the right to pan, and scroll to zoom. Its panel pauses and resumes
+stepping (space), takes one step at a time while paused (the right arrow), and changes the speed. It draws with raylib on OpenGL 3.3 core, which on Linux needs the headers of X11 and OpenGL
+to build, such as Debian's `libgl-dev`, `libx11-dev`, `libxcursor-dev`, `libxi-dev`,
+`libxinerama-dev` and `libxrandr-dev`. It is built by every preset, unless `APLOMB_BUILD_SANDBOX` is
+off. How the code is written is in `CODING_STANDARDS.md`.
 
 aplomb is under the MIT licence; see `LICENSE`. The libraries it ships with, and their licences,
 are in `THIRD_PARTY_NOTICES.md`.

@@ -1,7 +1,7 @@
 # aplomb: an active ragdoll library on Jolt Physics. aplomb::core holds the world and everything
 # that controls its characters, and links Jolt and the standard library alone. aplomb::files reads
 # rig files into what the core takes, and reads scenario files and writes metrics files for the
-# scenario runner.
+# scenario runner. The sandbox is a viewer for watching characters, built on raylib.
 #
 # Every supported build is a preset in CMakePresets.json, so a developer and CI run the same
 # `cmake --workflow --preset <preset>`. Dependencies come only through find_package; the build never
@@ -51,6 +51,9 @@ set(CMAKE_CXX_SCAN_FOR_MODULES OFF)
 
 # A host that adds aplomb as a subproject gets the library alone.
 option(APLOMB_BUILD_TESTS "Build aplomb's tests." ${PROJECT_IS_TOP_LEVEL})
+option(APLOMB_BUILD_SANDBOX "Build the sandbox, which needs raylib, Dear ImGui and rlImGui."
+    ${PROJECT_IS_TOP_LEVEL}
+)
 # Many hosts build without exceptions, and the library must build that way too. The tests keep
 # exceptions either way, since Catch2 needs them.
 option(APLOMB_EXCEPTIONS "Build the library with exceptions enabled." ON)
@@ -62,6 +65,9 @@ aplomb_enable_sanitizers("${APLOMB_SANITIZERS}")
 add_subdirectory(src/core)
 add_subdirectory(src/files)
 add_subdirectory(src/scenes)
+if(APLOMB_BUILD_SANDBOX)
+    add_subdirectory(src/sandbox)
+endif()
 
 if(APLOMB_BUILD_TESTS)
     enable_testing()

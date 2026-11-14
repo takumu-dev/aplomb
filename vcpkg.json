@@ -25,6 +25,20 @@
           "version>=": "3.0.1"
         }
       ]
+    },
+    "sandbox": {
+      "description": "What the sandbox needs to draw and take input, and nothing a host ships",
+      "dependencies": [
+        {
+          "name": "imgui",
+          "version>=": "1.92.9"
+        },
+        {
+          "name": "raylib",
+          "version>=": "6.0"
+        },
+        "rlimgui"
+      ]
     }
   }
 }
