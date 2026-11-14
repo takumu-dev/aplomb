@@ -46,6 +46,10 @@ class PushTool {
     /// \param session The session the grab was made in.
     void release(Session& session);
 
+    /// Lets go of the grabbed part without pushing it, as when the session it was grabbed in is
+    /// replaced.
+    void let_go() noexcept;
+
     /// The impulse the drag gives now, while a part is grabbed.
     ///
     /// \param session The session the grab was made in.

@@ -91,6 +91,8 @@ void PushTool::release(Session& session) {
     grab_.reset();
 }
 
+void PushTool::let_go() noexcept { grab_.reset(); }
+
 std::optional<JPH::Vec3> PushTool::impulse(const Session& session) const {
     const std::optional<Drag> now = drag(session);
     if (!now) {

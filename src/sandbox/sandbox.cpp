@@ -48,7 +48,12 @@ void Sandbox::update(float frame_seconds) {
     draw_panels();
     use_push_tool();
     for (std::size_t steps = clock_.advance(frame_seconds); steps > 0; --steps) {
+        const bool playing = session_.playing();
         session_.step();
+        if (playing && !session_.playing()) {
+            clock_.set_paused(true);
+            break;
+        }
     }
 }
 
@@ -97,7 +102,9 @@ void Sandbox::use_push_tool() {
         const JPH::Vec3 direction = view.direction_through(
             (2.0F * io.MousePos.x / io.DisplaySize.x) - 1.0F,
             1.0F - (2.0F * io.MousePos.y / io.DisplaySize.y), io.DisplaySize.x / io.DisplaySize.y);
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !io.WantCaptureMouse) {
+        // A session playing a replay back takes no pushes but the replay's.
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !io.WantCaptureMouse &&
+            !session_.playing()) {
             push_tool_.grab(session_, view, direction);
         } else {
             push_tool_.aim(view, direction);
@@ -128,6 +135,13 @@ void Sandbox::draw_panels() {
         }
         if (ImGui::CollapsingHeader("Characters", ImGuiTreeNodeFlags_DefaultOpen)) {
             characters_.draw(session_, rig_file_.rig());
+        }
+        if (ImGui::CollapsingHeader("Replay", ImGuiTreeNodeFlags_DefaultOpen) &&
+            replay_.draw(session_, rig_file_)) {
+            // A part grabbed in the session replaced belongs to none of the new one's characters,
+            // and a replay played back may step at another rate.
+            push_tool_.let_go();
+            clock_.set_step_rate(session_.step_rate());
         }
         if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) {
             draw_layers_panel(layers_);

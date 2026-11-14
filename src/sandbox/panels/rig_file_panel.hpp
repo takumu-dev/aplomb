@@ -3,6 +3,7 @@
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/files/file_error.hpp>
 
+#include <cstdint>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -23,11 +24,16 @@ class RigFilePanel {
     /// The rig last loaded, or none if the last load failed.
     [[nodiscard]] const std::optional<aplomb::RigDesc>& rig() const noexcept;
 
+    /// The hash of the rig file the rig was last loaded from, by which a replay names it, or none
+    /// if the last load failed.
+    [[nodiscard]] std::optional<std::uint64_t> rig_file_hash() const noexcept;
+
   private:
     void load();
 
     std::string path_;
     std::optional<aplomb::RigDesc> rig_;
+    std::optional<std::uint64_t> hash_;
     // Why the last load failed, or none if it didn't.
     std::optional<aplomb::FileError> error_;
 };

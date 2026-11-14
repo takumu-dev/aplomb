@@ -13,6 +13,8 @@ constexpr float max_steps_per_frame = 8.0F;
 
 StepClock::StepClock(float step_rate) noexcept : step_rate_(step_rate) {}
 
+void StepClock::set_step_rate(float step_rate) noexcept { step_rate_ = step_rate; }
+
 bool StepClock::paused() const noexcept { return paused_; }
 
 void StepClock::set_paused(bool paused) noexcept {
