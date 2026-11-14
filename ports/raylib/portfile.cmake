@@ -59,4 +59,14 @@ if(VCPKG_LIBRARY_LINKAGE STREQUAL "dynamic")
     vcpkg_replace_string("${CURRENT_PACKAGES_DIR}/include/raylib.h" "defined(USE_LIBTYPE_SHARED)" "1")
 endif()
 
+# A static raylib holds the bundled GLFW, whose frameworks on macOS raylib's export leaves out, so
+# whatever links it fails to. The package's target names them, as GLFW's own build links them.
+if(VCPKG_TARGET_IS_OSX AND VCPKG_LIBRARY_LINKAGE STREQUAL "static")
+    file(APPEND "${CURRENT_PACKAGES_DIR}/share/${PORT}/raylib-config.cmake" [[
+set_property(TARGET raylib APPEND PROPERTY INTERFACE_LINK_LIBRARIES
+    "-framework Cocoa" "-framework IOKit" "-framework CoreFoundation"
+)
+]])
+endif()
+
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")
