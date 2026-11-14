@@ -26,15 +26,16 @@ replay's; the scenarios in `tests/scenarios/` run at 60 Hz and 120 Hz with the t
 The sandbox, `aplomb_sandbox`, is a window onto a world on flat ground. It loads a rig file, the
 humanoid rig by default or the one its command line names, adds characters made from it and removes
 them, and lets you watch them fall from any side: drag with the right mouse button to orbit, with
-the middle button or shift and the right to pan, and scroll to zoom. Its panel pauses and resumes
-stepping (space), takes one step at a time while paused (the right arrow), and changes the speed,
-and turns on and off the debug layers that show the characters' shapes, joints, joint limits,
-contacts and centres of mass. It lists every problem in a rig file with its line and column, and its
-rig inspector lists a character's parts and joints with their settings. It draws with raylib on
-OpenGL 3.3 core, which on Linux needs the headers of X11 and OpenGL to build, such as Debian's
-`libgl-dev`, `libx11-dev`, `libxcursor-dev`, `libxi-dev`, `libxinerama-dev` and `libxrandr-dev`. It
-is built by every preset, unless `APLOMB_BUILD_SANDBOX` is off. How the code is written is in
-`CODING_STANDARDS.md`.
+the middle button or shift and the right to pan, and scroll to zoom. Drag from a part with the left
+button and let go to push it that way, harder the further the drag. Its panel pauses and resumes
+stepping (space), takes one step at a time while paused (the right arrow), changes the speed and how
+hard a drag pushes, and turns on and off the debug layers that show the characters' shapes, joints,
+joint limits, contacts and centres of mass. It lists every problem in a rig file with its line and
+column, and its rig inspector lists a character's parts and joints with their settings. It draws
+with raylib on OpenGL 3.3 core, which on Linux needs the headers of X11 and OpenGL to build, such as
+Debian's `libgl-dev`, `libx11-dev`, `libxcursor-dev`, `libxi-dev`, `libxinerama-dev` and
+`libxrandr-dev`. It is built by every preset, unless `APLOMB_BUILD_SANDBOX` is off. How the code is
+written is in `CODING_STANDARDS.md`.
 
 aplomb is under the MIT licence; see `LICENSE`. The libraries it ships with, and their licences,
 are in `THIRD_PARTY_NOTICES.md`.

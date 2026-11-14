@@ -1,6 +1,6 @@
 // The sandbox: a window onto a world on flat ground, where the owner loads a rig file, adds
-// characters and watches them fall from any side, pausing, stepping and changing the speed, with
-// debug layers for what the physics is doing and an inspector for the characters' rigs.
+// characters, pushes them and watches them fall from any side, pausing, stepping and changing the
+// speed, with debug layers for what the physics is doing and an inspector for the characters' rigs.
 //
 //   aplomb_sandbox [<rig file>]
 //
