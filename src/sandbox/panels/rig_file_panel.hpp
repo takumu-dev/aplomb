@@ -1,13 +1,14 @@
 #pragma once
 
 #include <aplomb/core/rig_desc.hpp>
+#include <aplomb/files/file_error.hpp>
 
 #include <filesystem>
 #include <optional>
 #include <string>
 
 /// The rig file that characters are added from: a path the owner can change, and the rig last
-/// loaded from it, or why it couldn't be.
+/// loaded from it, or why it couldn't be, with every problem in the file at its line and column.
 class RigFilePanel {
   public:
     /// Loads the rig file at a path.
@@ -27,5 +28,6 @@ class RigFilePanel {
 
     std::string path_;
     std::optional<aplomb::RigDesc> rig_;
-    std::string problem_;
+    // Why the last load failed, or none if it didn't.
+    std::optional<aplomb::FileError> error_;
 };

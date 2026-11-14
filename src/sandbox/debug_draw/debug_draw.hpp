@@ -7,8 +7,8 @@
 #include <Jolt/Core/Color.h>
 #include <Jolt/Math/Vec3.h>
 
-/// What the sandbox draws through, in world space: lines, and the shapes parts are made of. Only
-/// its backend knows how they reach the screen.
+/// What the sandbox draws through, in world space: lines, lines drawn over everything else, and the
+/// shapes parts are made of. Only its backend knows how they reach the screen.
 class DebugDraw {
   public:
     virtual ~DebugDraw() = default;
@@ -19,6 +19,14 @@ class DebugDraw {
     /// \param to Where the line ends.
     /// \param color The line's colour.
     virtual void line(JPH::Vec3 from, JPH::Vec3 to, JPH::Color color) = 0;
+
+    /// Draws a line over everything else in the scene, so that it shows through the shapes in front
+    /// of it, as the debug layers need to show what lies inside a part.
+    ///
+    /// \param from Where the line starts.
+    /// \param to Where the line ends.
+    /// \param color The line's colour.
+    virtual void overlay_line(JPH::Vec3 from, JPH::Vec3 to, JPH::Color color) = 0;
 
     /// Draws a solid box, centred on its transform's position and lined up with its axes.
     ///

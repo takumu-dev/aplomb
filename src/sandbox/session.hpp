@@ -1,5 +1,6 @@
 #pragma once
 
+#include "contact_tracker.hpp"
 #include <aplomb/core/character_error.hpp>
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/core/typed_id.hpp>
@@ -9,12 +10,14 @@
 
 #include <cstdint>
 #include <expected>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
 
 /// What the sandbox shows: a world that owns its physics system, built on the flat_ground scene,
-/// and the characters the owner adds onto it.
+/// and the characters the owner adds onto it, with a contact listener on its physics system that
+/// keeps the contacts there.
 ///
 /// Each character is dropped from just above the ground at a place of its own in a row along the X
 /// axis, the place nearest the origin that no other character holds.
@@ -54,9 +57,15 @@ class Session {
     /// The session's world.
     [[nodiscard]] const aplomb::World& world() const noexcept;
 
-  private:
-    Session(aplomb::World world, float step_rate) noexcept;
+    /// Every contact in the world's physics system after its last step, in no particular order.
+    [[nodiscard]] std::vector<Contact> contacts() const;
 
+  private:
+    Session(aplomb::World world, std::unique_ptr<ContactTracker> contacts,
+            float step_rate) noexcept;
+
+    // The physics system holds a pointer to the listener, so the listener outlives the world.
+    std::unique_ptr<ContactTracker> contacts_;
     aplomb::World world_;
     float step_rate_;
     std::vector<aplomb::CharacterId> characters_;

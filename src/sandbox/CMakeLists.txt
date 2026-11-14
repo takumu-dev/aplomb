@@ -1,5 +1,6 @@
 # The sandbox, a viewer in which the owner loads a rig file, adds characters onto flat ground and
-# watches them fall. It uses only the public interfaces of aplomb::core, aplomb::files and
+# watches them fall, through debug layers that show their shapes, joints, joint limits, contacts and
+# centres of mass. It uses only the public interfaces of aplomb::core, aplomb::files and
 # aplomb::scenes, and draws through the DebugDraw interface in debug_draw/, whose one backend is
 # raylib's, with its panels in Dear ImGui through rlImGui. Every preset builds it, but nothing opens
 # its window.
@@ -8,14 +9,24 @@ find_package(raylib CONFIG REQUIRED)
 find_package(rlimgui CONFIG REQUIRED)
 
 add_executable(aplomb_sandbox
+    contact_tracker.cpp
     debug_draw/raylib_debug_draw.cpp
     host_services.cpp
     jolt_runtime.cpp
+    layers/center_of_mass_layer.cpp
+    layers/contacts_layer.cpp
+    layers/ground.cpp
+    layers/joint_limits_layer.cpp
+    layers/joints_layer.cpp
+    layers/marks.cpp
+    layers/part_frames.cpp
     layers/shapes_layer.cpp
     main.cpp
     orbit_camera.cpp
     panels/characters_panel.cpp
+    panels/layers_panel.cpp
     panels/rig_file_panel.cpp
+    panels/rig_inspector_panel.cpp
     panels/stepping_panel.cpp
     sandbox.cpp
     session.cpp

@@ -1,5 +1,7 @@
 #include "session.hpp"
 
+#include "contact_tracker.hpp"
+#include <aplomb/core/character.hpp>
 #include <aplomb/core/character_error.hpp>
 #include <aplomb/core/rig_desc.hpp>
 #include <aplomb/core/transform.hpp>
@@ -18,6 +20,7 @@
 #include <cstdint>
 #include <expected>
 #include <iterator>
+#include <memory>
 #include <optional>
 #include <span>
 #include <utility>
@@ -48,11 +51,14 @@ std::expected<Session, aplomb::WorldError> Session::create(const aplomb::WorldSe
         return std::unexpected(std::move(world.error()));
     }
     aplomb::build_flat_ground(world->physics_system());
-    return Session(std::move(*world), settings.step_rate);
+    auto contacts = std::make_unique<ContactTracker>();
+    world->physics_system().SetContactListener(contacts.get());
+    return Session(std::move(*world), std::move(contacts), settings.step_rate);
 }
 
-Session::Session(aplomb::World world, float step_rate) noexcept
-    : world_(std::move(world)), step_rate_(step_rate) {}
+Session::Session(aplomb::World world, std::unique_ptr<ContactTracker> contacts,
+                 float step_rate) noexcept
+    : contacts_(std::move(contacts)), world_(std::move(world)), step_rate_(step_rate) {}
 
 std::expected<aplomb::CharacterId, aplomb::CharacterError>
 Session::add_character(const aplomb::RigDesc& rig) {
@@ -74,6 +80,10 @@ Session::add_character(const aplomb::RigDesc& rig) {
 }
 
 void Session::remove_character(aplomb::CharacterId character) {
+    const aplomb::Character& removed = world_.character(character);
+    for (std::size_t part = 0; part < removed.rig().parts.size(); ++part) {
+        contacts_->forget_body(removed.part_body(aplomb::PartId(static_cast<std::uint32_t>(part))));
+    }
     world_.remove_character(character);
     std::erase(characters_, character);
     std::ranges::find_if(places_, [&](const std::optional<aplomb::CharacterId>& held) {
@@ -93,3 +103,5 @@ std::uint64_t Session::steps_taken() const noexcept { return steps_taken_; }
 float Session::step_rate() const noexcept { return step_rate_; }
 
 const aplomb::World& Session::world() const noexcept { return world_; }
+
+std::vector<Contact> Session::contacts() const { return contacts_->contacts(); }
