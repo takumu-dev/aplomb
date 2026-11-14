@@ -5,6 +5,7 @@
 #include "layers/debug_layers.hpp"
 #include "orbit_camera.hpp"
 #include "panels/characters_panel.hpp"
+#include "panels/replay_panel.hpp"
 #include "panels/rig_file_panel.hpp"
 #include "panels/rig_inspector_panel.hpp"
 #include "push_tool.hpp"
@@ -14,7 +15,10 @@
 #include <filesystem>
 
 /// Everything the sandbox shows and does, bar the window: the session, the camera, the clock that
-/// steps the world, the debug layers that draw it, and the panels that control them.
+/// steps the world, the debug layers that draw it, and the panels that control them, record it and
+/// play replays back.
+///
+/// When a replay played back ends, stepping pauses on its last step.
 ///
 /// The camera orbits its target on a drag with the right mouse button, pans on a drag with the
 /// middle button or with shift and the right, and zooms on the mouse wheel. A drag with the left
@@ -55,4 +59,5 @@ class Sandbox {
     RigFilePanel rig_file_;
     CharactersPanel characters_;
     RigInspectorPanel rig_inspector_;
+    ReplayPanel replay_;
 };

@@ -20,6 +20,11 @@ class StepClock {
     /// \param step_rate The world's step rate, in steps a second.
     explicit StepClock(float step_rate) noexcept;
 
+    /// Sets the world's step rate, as when the sandbox's world is replaced by one at another rate.
+    ///
+    /// \param step_rate The world's step rate, in steps a second.
+    void set_step_rate(float step_rate) noexcept;
+
     /// Whether stepping is paused.
     [[nodiscard]] bool paused() const noexcept;
 

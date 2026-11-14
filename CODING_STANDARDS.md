@@ -254,13 +254,14 @@ state hash its run must end with, one to a file in `tests/golden/`.
 - `tests/` mirrors `src/`. `tests/runner/` holds the scenario runner, with its tests, named
   `runner:`, and `tests/scenarios/` the scenario files it runs at 60 Hz and 120 Hz with the tests,
   named `scenarios:`, each run writing a metrics file to `metrics/` in the build directory, which
-  every CI job keeps. `tests/golden/` holds the scenarios' golden hashes.
-  `tests/build/` holds tests of the build itself, named `build:`, and
-  `tests/support/` holds what the tests share: Jolt's process-wide
-  setup as a host does it, the job system and temporary allocator a host lends a world, with a fixed
-  number of threads, a physics system of a host's own for a world to attach to, and a log sink
-  that records what it receives. No test opens a window, and the sandbox, which is checked by hand,
-  has no tests.
+  every CI job keeps. `tests/golden/` holds the scenarios' golden hashes. `tests/replays/` holds
+  sessions recorded in the sandbox, which the runner plays back in tests named `replays:`, so that
+  the sandbox and the runner are shown to step alike. `tests/build/` holds tests of the build
+  itself, named `build:`, and `tests/support/` holds what the tests share: Jolt's process-wide setup
+  as a host does it, the job system and temporary allocator a host lends a world, with a fixed
+  number of threads, a physics system of a host's own for a world to attach to, and a log sink that
+  records what it receives. No test opens a window, and the sandbox, which is checked by hand, has
+  no tests of its own.
 - Each test's name begins with the target it tests, matching its Catch2 tag (`[core]`). Each kind of
   test has a helper in `tests/CMakeLists.txt`:
   - `aplomb_add_tests` adds a target's Catch2 test cases, each registered with CTest.
@@ -279,6 +280,10 @@ state hash its run must end with, one to a file in `tests/golden/`.
     which the two runs' state hashes differ. With `REPLAY`, it records each run as a replay, to
     `replays/` in the build directory, and plays the replay back in a test of its own, which fails
     naming the first step at which its state hashes differ from those played back.
+  - `aplomb_add_recorded_replay_test` adds a replay file of `tests/replays/`, recorded in the
+    sandbox, which `aplomb_runner` plays back with the rig file it names, failing at the first step
+    at which its state hash differs from the replay's. A replay is recorded afresh when its rig file
+    changes or when the world steps otherwise.
   - `aplomb_add_script_test` adds a CMake script that tests the build's own CMake code, such as
     the licence check on the fake vcpkg trees of `tests/build/licenses/`, through
     `tests/support/check_program.cmake` too.

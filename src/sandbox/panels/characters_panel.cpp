@@ -13,6 +13,8 @@
 #include <optional>
 
 void CharactersPanel::draw(Session& session, const std::optional<aplomb::RigDesc>& rig) {
+    // A replay can't hold a character added or removed as it goes.
+    ImGui::BeginDisabled(!session.can_change_characters());
     ImGui::BeginDisabled(!rig.has_value());
     if (ImGui::Button("Add character") && rig) {
         const std::expected<aplomb::CharacterId, aplomb::CharacterError> added =
@@ -43,6 +45,7 @@ void CharactersPanel::draw(Session& session, const std::optional<aplomb::RigDesc
                                    .c_str());
         ImGui::PopID();
     }
+    ImGui::EndDisabled();
     if (remove_all) {
         while (!session.characters().empty()) {
             session.remove_character(session.characters().back());
