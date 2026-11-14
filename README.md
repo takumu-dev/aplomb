@@ -40,6 +40,12 @@ on Linux needs the headers of X11 and OpenGL to build, such as Debian's `libgl-d
 `libxcursor-dev`, `libxi-dev`, `libxinerama-dev` and `libxrandr-dev`. It is built by every preset,
 unless `APLOMB_BUILD_SANDBOX` is off. How the code is written is in `CODING_STANDARDS.md`.
 
+aplomb builds with CMake 4.4 or newer from the presets in `CMakePresets.json`, which take its
+dependencies from vcpkg: on Linux with GCC 16 or Clang 23, on Windows with MSVC 14.52, and on macOS
+with the Apple Clang of Xcode 27.2, or anything newer. Linux is where it is developed and watched in
+the sandbox. CI builds and tests it on Windows and macOS too, where every scenario must end with
+the golden hash it ends with on Linux.
+
 aplomb is under the MIT licence; see `LICENSE`. The libraries it ships with, and their licences,
 are in `THIRD_PARTY_NOTICES.md`.
 
