@@ -7,6 +7,7 @@
 #include "panels/characters_panel.hpp"
 #include "panels/rig_file_panel.hpp"
 #include "panels/rig_inspector_panel.hpp"
+#include "push_tool.hpp"
 #include "session.hpp"
 #include "step_clock.hpp"
 
@@ -16,7 +17,8 @@
 /// steps the world, the debug layers that draw it, and the panels that control them.
 ///
 /// The camera orbits its target on a drag with the right mouse button, pans on a drag with the
-/// middle button or with shift and the right, and zooms on the mouse wheel.
+/// middle button or with shift and the right, and zooms on the mouse wheel. A drag with the left
+/// button from a part pushes it.
 class Sandbox {
   public:
     /// Creates the sandbox, loading the rig file that characters are first added from.
@@ -31,7 +33,8 @@ class Sandbox {
     /// \param frame_seconds How long the last frame took on the wall clock.
     void update(float frame_seconds);
 
-    /// Draws the ground, and the session's world through the debug layers that are on.
+    /// Draws the ground, the session's world through the debug layers that are on, and the push
+    /// being dragged.
     ///
     /// \param draw What to draw with.
     void draw(DebugDraw& draw) const;
@@ -41,12 +44,14 @@ class Sandbox {
 
   private:
     void steer_camera();
+    void use_push_tool();
     void draw_panels();
 
     Session session_;
     StepClock clock_;
     OrbitCamera camera_;
     DebugLayers layers_;
+    PushTool push_tool_;
     RigFilePanel rig_file_;
     CharactersPanel characters_;
     RigInspectorPanel rig_inspector_;

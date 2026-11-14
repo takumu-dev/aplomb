@@ -9,16 +9,22 @@
 #include "layers/joints_layer.hpp"
 #include "layers/shapes_layer.hpp"
 #include "panels/layers_panel.hpp"
+#include "panels/push_panel.hpp"
 #include "panels/stepping_panel.hpp"
+#include "push_tool.hpp"
 #include "session.hpp"
 #include <aplomb/core/world.hpp>
 
+#include <Jolt/Jolt.h>
+
+#include <Jolt/Math/Vec3.h>
 #include <imgui.h>
 
 #include <cfloat>
 #include <cstddef>
 #include <filesystem>
 #include <format>
+#include <optional>
 #include <utility>
 
 namespace {
@@ -40,6 +46,7 @@ void Sandbox::update(float frame_seconds) {
     steer_camera();
     take_stepping_shortcuts(clock_);
     draw_panels();
+    use_push_tool();
     for (std::size_t steps = clock_.advance(frame_seconds); steps > 0; --steps) {
         session_.step();
     }
@@ -63,6 +70,7 @@ void Sandbox::draw(DebugDraw& draw) const {
     if (layers_.center_of_mass) {
         draw_center_of_mass_layer(world, session_.characters(), draw);
     }
+    push_tool_.draw(session_, draw);
 }
 
 CameraView Sandbox::camera_view() const { return camera_.view(); }
@@ -79,6 +87,31 @@ void Sandbox::steer_camera() {
         camera_.orbit(-io.MouseDelta.x * orbit_per_pixel, io.MouseDelta.y * orbit_per_pixel);
     }
     camera_.zoom(io.MouseWheel);
+}
+
+void Sandbox::use_push_tool() {
+    const ImGuiIO& io = ImGui::GetIO();
+    // The drag is aimed before it is let go of, so that a push goes where the cursor is now.
+    if (ImGui::IsMousePosValid() && io.DisplaySize.x > 0.0F && io.DisplaySize.y > 0.0F) {
+        const CameraView view = camera_.view();
+        const JPH::Vec3 direction = view.direction_through(
+            (2.0F * io.MousePos.x / io.DisplaySize.x) - 1.0F,
+            1.0F - (2.0F * io.MousePos.y / io.DisplaySize.y), io.DisplaySize.x / io.DisplaySize.y);
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !io.WantCaptureMouse) {
+            push_tool_.grab(session_, view, direction);
+        } else {
+            push_tool_.aim(view, direction);
+        }
+    }
+    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left)) {
+        push_tool_.release(session_);
+    }
+    const std::optional<JPH::Vec3> impulse = push_tool_.impulse(session_);
+    if (impulse) {
+        ImGui::BeginTooltip();
+        ImGui::TextUnformatted(std::format("{:.1f} N s", impulse->Length()).c_str());
+        ImGui::EndTooltip();
+    }
 }
 
 void Sandbox::draw_panels() {
@@ -98,6 +131,9 @@ void Sandbox::draw_panels() {
         }
         if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) {
             draw_layers_panel(layers_);
+        }
+        if (ImGui::CollapsingHeader("Push", ImGuiTreeNodeFlags_DefaultOpen)) {
+            draw_push_panel(push_tool_);
         }
         if (ImGui::CollapsingHeader("Camera")) {
             ImGui::TextUnformatted("Right drag: orbit\nMiddle drag, or shift and right drag: pan\n"

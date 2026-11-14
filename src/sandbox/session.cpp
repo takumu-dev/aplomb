@@ -91,6 +91,11 @@ void Session::remove_character(aplomb::CharacterId character) {
     })->reset();
 }
 
+void Session::push(aplomb::CharacterId character, aplomb::PartId part, JPH::Vec3 world_point,
+                   JPH::Vec3 impulse) {
+    world_.push(character, part, world_point, impulse);
+}
+
 std::span<const aplomb::CharacterId> Session::characters() const noexcept { return characters_; }
 
 void Session::step() {

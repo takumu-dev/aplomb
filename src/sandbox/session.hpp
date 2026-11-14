@@ -8,6 +8,10 @@
 #include <aplomb/core/world_error.hpp>
 #include <aplomb/core/world_settings.hpp>
 
+#include <Jolt/Jolt.h>
+
+#include <Jolt/Math/Vec3.h>
+
 #include <cstdint>
 #include <expected>
 #include <memory>
@@ -41,6 +45,15 @@ class Session {
     ///
     /// \param character One of the session's characters.
     void remove_character(aplomb::CharacterId character);
+
+    /// Pushes one of a character's parts with an impulse at a point, at the start of the next step.
+    ///
+    /// \param character One of the session's characters.
+    /// \param part A part of the character's rig.
+    /// \param world_point Where the impulse is applied, in the world.
+    /// \param impulse The impulse, in newton seconds.
+    void push(aplomb::CharacterId character, aplomb::PartId part, JPH::Vec3 world_point,
+              JPH::Vec3 impulse);
 
     /// The session's characters, in the order they were added.
     [[nodiscard]] std::span<const aplomb::CharacterId> characters() const noexcept;
