@@ -14,6 +14,12 @@ function(aplomb_check_compiler_floor id version)
         set(floor 23)
         set(needed "Clang 23")
         set(found "Clang ${version}")
+    elseif(id STREQUAL "AppleClang")
+        # The Apple Clang of Xcode 27.2. CMake adds Apple's build number to its version, which tells
+        # apart Xcodes whose Apple Clang has the same version.
+        set(floor 21.0.0.21000401)
+        set(needed "Apple Clang 21.0.0.21000401 (Xcode 27.2)")
+        set(found "Apple Clang ${version}")
     elseif(id STREQUAL "MSVC")
         # CMake reports cl's own version, which runs five majors ahead of the toolset's.
         set(floor 19.52)
@@ -22,8 +28,8 @@ function(aplomb_check_compiler_floor id version)
     else()
         # Nothing is known about other compilers, so they may try.
         message(WARNING
-            "aplomb supports GCC, Clang and MSVC; ${id} ${version} is untested, and the build "
-            "may fail."
+            "aplomb supports GCC, Clang, Apple Clang and MSVC; ${id} ${version} is untested, and "
+            "the build may fail."
         )
         return()
     endif()
