@@ -29,6 +29,9 @@ function(aplomb_target_warnings target)
             /w14905 /w14906 # a string literal cast to the wrong kind of string
             /w14928 # more than one user-defined conversion
         )
+        # MSVC deprecates standard C functions such as std::freopen in favour of its own, which no
+        # other standard library has.
+        target_compile_definitions(${target} PRIVATE _CRT_SECURE_NO_WARNINGS)
     else()
         target_compile_options(${target} PRIVATE
             -Wall
