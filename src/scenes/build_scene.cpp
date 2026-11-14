@@ -36,7 +36,7 @@ constexpr auto names = [] {
 std::span<const std::string_view> scene_names() noexcept { return names; }
 
 bool build_scene(std::string_view name, JPH::PhysicsSystem& physics_system) {
-    const auto* const scene = std::ranges::find(scenes, name, &Scene::name);
+    const auto scene = std::ranges::find(scenes, name, &Scene::name);
     if (scene == scenes.end()) {
         return false;
     }

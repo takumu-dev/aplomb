@@ -62,6 +62,9 @@ CheckOptions:
   # Macros only where nothing else will do, in upper case.
   readability-identifier-naming.MacroDefinitionCase: UPPER_CASE
   readability-identifier-naming.IgnoreMainLikeFunctions: true
+  # std::array's iterators are pointers in libstdc++ and libc++, but classes in MSVC's standard
+  # library, which a `const auto*` won't take. A ranges algorithm on an array returns one.
+  readability-qualified-auto.AllowedTypes: 'std::ranges::borrowed_iterator_t<.*std::array<.*>'
   # A plain struct, its fields all public, may still have member functions such as operators.
   misc-non-private-member-variables-in-classes.IgnoreClassesWithAllMemberVariablesBeingPublic: true
 ...

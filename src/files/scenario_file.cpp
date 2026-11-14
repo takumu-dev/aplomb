@@ -146,7 +146,7 @@ class ScenarioFileReader {
             if (!name.has_value()) {
                 continue;
             }
-            const auto* const metric = std::ranges::find(all_metrics, *name, metric_name);
+            const auto metric = std::ranges::find(all_metrics, *name, metric_name);
             if (metric == all_metrics.end()) {
                 file_.get().report_at(element, FileProblemCode::invalid_value,
                                       std::format("a metric is {}, not \"{}\"",
