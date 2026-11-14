@@ -5,6 +5,12 @@
 # just as a developer does. The `ci` job passes when every Linux job and lint pass, and is the check
 # a pull request into develop must pass.
 #
+# Windows and macOS jobs cost far more, and draw on the free plan's credits rather than the open
+# source plan's, so they aren't part of the `ci` check. windows-msvc-release runs on every branch
+# but develop and main, which it has already passed on its way in. macos-clang-release, dearer
+# still, runs on release branches alone. When a schedule triggers the pipeline, as the project
+# settings do every Monday on develop, both run and nothing else does.
+#
 # Building the image needs the `ghcr` context, holding GHCR_TOKEN, a token of takumu-dev's allowed
 # to write packages. Once it exists, the image is public, so a pull request from a fork, which gets
 # no context, still runs.
@@ -34,6 +40,28 @@ executors:
     resource_class: << parameters.resource_class >>
 
 commands:
+  # Keeps what a workflow preset's run leaves: its test results, its metrics files, and vcpkg's log.
+  store-results:
+    parameters:
+      preset:
+        type: string
+      tests:
+        type: boolean
+        default: true
+    steps:
+      - when:
+          condition: << parameters.tests >>
+          steps:
+            - store_test_results:
+                path: build/<< parameters.preset >>/junit.xml
+            # A failed run's file still names the first step at which two runs differed.
+            - store_artifacts:
+                path: build/<< parameters.preset >>/metrics
+                destination: metrics
+      - store_artifacts:
+          path: build/<< parameters.preset >>/vcpkg-manifest-install.log
+          destination: vcpkg-manifest-install.log
+
   login-to-ghcr:
     steps:
       - run:
@@ -149,18 +177,135 @@ jobs:
           key: ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-{{ .Revision }}
           paths:
             - /root/.cache/ccache
-      - when:
-          condition: << parameters.tests >>
-          steps:
-            - store_test_results:
-                path: build/<< parameters.preset >>/junit.xml
-            # A failed run's file still names the first step at which two runs differed.
-            - store_artifacts:
-                path: build/<< parameters.preset >>/metrics
-                destination: metrics
-      - store_artifacts:
-          path: build/<< parameters.preset >>/vcpkg-manifest-install.log
-          destination: vcpkg-manifest-install.log
+      - store-results:
+          preset: << parameters.preset >>
+          tests: << parameters.tests >>
+
+  # Runs on a Windows Server image at a dated tag, so that the MSVC toolsets it carries hold still.
+  # The toolset the job builds with is named, since vcvarsall.bat would set up an older one. The
+  # dependencies are built by whichever toolset vcpkg chooses, which may be older, and a newer
+  # toolset links them.
+  windows-msvc-release:
+    machine:
+      image: windows-server-2025-gui:2026.10.1
+      shell: powershell.exe -ExecutionPolicy Bypass
+    resource_class: windows.medium
+    environment:
+      MSVC_VERSION: "14.52"
+      CI_TOOLS: C:\ci\tools
+      VCPKG_ROOT: C:\ci\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: C:\ci\vcpkg-cache
+    # Each step runs in Windows PowerShell, which stops at a native command that fails only when
+    # told to, and hands the workflow to PowerShell 7, passing on how it exited.
+    steps:
+      - checkout
+      - run:
+          name: Install CMake and Ninja
+          command: |
+            python -m venv $env:CI_TOOLS
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & "$env:CI_TOOLS\Scripts\python.exe" -m pip install --disable-pip-version-check `
+                cmake==4.4.5 ninja==1.13.2
+            exit $LASTEXITCODE
+      # vcpkg reads each port's version with git in an environment of its own, which on Windows
+      # holds nothing else, so git can't reach the network for a blob a partial clone lacks, and the
+      # clone is a full one.
+      - run:
+          name: Set up vcpkg at the manifest's baseline
+          command: |
+            $ErrorActionPreference = 'Stop'
+            $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+            git clone --quiet https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git -C $env:VCPKG_ROOT checkout --quiet $baseline
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+      # The key names the toolset and the image too. A key is saved once, so a cache restored from
+      # an older toolset's would otherwise never give way to one of the dependencies built afresh.
+      - run:
+          name: Key the dependency cache
+          command: |
+            Get-Content vcpkg.json, vcpkg-configuration.json | Set-Content C:\ci\vcpkg-key
+            git rev-parse HEAD:ports | Add-Content C:\ci\vcpkg-key
+            "windows-server-2025-gui:2026.10.1 MSVC $env:MSVC_VERSION" | Add-Content C:\ci\vcpkg-key
+      - restore_cache:
+          keys:
+            - vcpkg-v1-windows-{{ checksum "C:/ci/vcpkg-key" }}
+            - vcpkg-v1-windows-
+      - run:
+          name: Run the windows-msvc-release workflow
+          command: |
+            pwsh -NoProfile -File .circleci/windows/workflow.ps1 `
+                -MsvcVersion $env:MSVC_VERSION -Preset windows-msvc-release
+            exit $LASTEXITCODE
+      - save_cache:
+          key: vcpkg-v1-windows-{{ checksum "C:/ci/vcpkg-key" }}
+          paths:
+            - C:\ci\vcpkg-cache
+      - store-results:
+          preset: windows-msvc-release
+
+  # Runs on CircleCI's image of the Xcode whose Apple Clang is aplomb's floor, which the job checks.
+  macos-clang-release:
+    macos:
+      xcode: "27.2"
+    resource_class: m4pro.medium
+    environment:
+      XCODE_VERSION: "27.2"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      VCPKG_ROOT: /tmp/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: /tmp/vcpkg-cache
+    steps:
+      - checkout
+      - run:
+          name: Check that the job builds with the floor's Xcode
+          command: |
+            xcodebuild -version
+            /usr/bin/clang++ --version
+            version=$(xcodebuild -version | sed -n 's/^Xcode //p')
+            case $version in
+              "$XCODE_VERSION" | "$XCODE_VERSION".*) ;;
+              *) echo "The job builds with Xcode $version, not $XCODE_VERSION" >&2; exit 1 ;;
+            esac
+      # The image has neither.
+      - run:
+          name: Install CMake and Ninja
+          command: brew install cmake ninja
+      # vcpkg reads the ports at the versions the manifest names from the registry's history, so a
+      # shallow clone won't do; a blobless one fetches only the files vcpkg reads.
+      - run:
+          name: Set up vcpkg at the manifest's baseline
+          command: |
+            baseline="$(jq -r '."builtin-baseline"' vcpkg.json)"
+            git clone --quiet --filter=blob:none --no-checkout \
+              https://github.com/microsoft/vcpkg "${VCPKG_ROOT}"
+            git -C "${VCPKG_ROOT}" checkout --quiet "${baseline}"
+            "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+            mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
+      # The key names the Xcode too, for the same reason as the Windows job's names its toolset.
+      - run:
+          name: Key the dependency cache
+          command: |
+            {
+              cat vcpkg.json vcpkg-configuration.json
+              git rev-parse HEAD:ports
+              echo "Xcode ${XCODE_VERSION}"
+            } > /tmp/vcpkg-key
+      - restore_cache:
+          keys:
+            - vcpkg-v1-macos-{{ checksum "/tmp/vcpkg-key" }}
+            - vcpkg-v1-macos-
+      - run:
+          name: Run the macos-clang-release workflow
+          command: cmake --workflow --preset macos-clang-release
+      - save_cache:
+          key: vcpkg-v1-macos-{{ checksum "/tmp/vcpkg-key" }}
+          paths:
+            - /tmp/vcpkg-cache
+      - store-results:
+          preset: macos-clang-release
 
   ci:
     docker:
@@ -173,6 +318,9 @@ jobs:
 
 workflows:
   ci:
+    when:
+      not:
+        equal: [scheduled_pipeline, << pipeline.trigger_source >>]
     jobs:
       - ci-image:
           name: ci-image-amd64
@@ -222,3 +370,20 @@ workflows:
             - linux-clang-release
             - linux-arm64-release
             - lint
+      - windows-msvc-release:
+          filters:
+            branches:
+              ignore:
+                - develop
+                - main
+      - macos-clang-release:
+          filters:
+            branches:
+              only: /^release\/.*/
+
+  weekly:
+    when:
+      equal: [scheduled_pipeline, << pipeline.trigger_source >>]
+    jobs:
+      - windows-msvc-release
+      - macos-clang-release
