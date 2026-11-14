@@ -7,7 +7,8 @@
 #include <string>
 
 /// The session's characters: a button that adds one from the loaded rig, and a list of them, each
-/// with a button that removes it.
+/// with a button that removes it, none of which work while the session records or plays a replay
+/// back.
 class CharactersPanel {
   public:
     /// Draws the characters into the current ImGui window.

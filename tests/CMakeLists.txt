@@ -165,6 +165,22 @@ function(aplomb_add_scenario_test scenario)
     endforeach()
 endfunction()
 
+# Adds the test of a replay file in tests/replays/, recorded in the sandbox: aplomb_runner plays it
+# back, failing where its state hash differs from the replay's at any step. Its metrics file goes to
+# metrics/ in the build directory, named after the replay.
+#
+#   replay  the replay file's stem
+#   RIG     the rig file it was recorded with, which it names by its hash alone
+function(aplomb_add_recorded_replay_test replay)
+    cmake_parse_arguments(PARSE_ARGV 1 arg "" "RIG" "")
+    set(metrics_dir "${PROJECT_BINARY_DIR}/metrics")
+    file(MAKE_DIRECTORY "${metrics_dir}")
+    add_test(NAME "replays: ${replay} plays back to its state hash at every step"
+        COMMAND aplomb_runner replay "${PROJECT_SOURCE_DIR}/tests/replays/${replay}.json"
+            --rig "${arg_RIG}" --metrics "${metrics_dir}/${replay}.json"
+    )
+endfunction()
+
 # Adds a test of the build's own CMake code: a script, run through support/check_program.cmake,
 # that includes the modules it tests from APLOMB_CMAKE_DIR and stops with an error when the
 # behaviour it checks is wrong. It gets a directory of its own to work in as TEST_DIR.
@@ -248,6 +264,7 @@ add_subdirectory(files)
 add_subdirectory(scenes)
 add_subdirectory(runner)
 add_subdirectory(scenarios)
+add_subdirectory(replays)
 add_subdirectory(build)
 
 # Records every scenario's golden hash at every step rate in golden/, replacing what is there: the

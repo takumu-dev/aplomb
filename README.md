@@ -21,7 +21,8 @@ runs a scenario with no window at the step rate it is given, writes what it meas
 file, and fails when the scenario's pass criteria do, when its final state hash isn't its golden
 hash, or, run twice, when the two runs' state hashes differ at any step. It records a run as a
 replay, and plays a replay back, failing at the first step whose state hash differs from the
-replay's; the scenarios in `tests/scenarios/` run at 60 Hz and 120 Hz with the tests.
+replay's; the scenarios in `tests/scenarios/` run at 60 Hz and 120 Hz with the tests, and the
+sessions recorded in the sandbox in `tests/replays/` play back with them.
 
 The sandbox, `aplomb_sandbox`, is a window onto a world on flat ground. It loads a rig file, the
 humanoid rig by default or the one its command line names, adds characters made from it and removes
@@ -31,11 +32,13 @@ button and let go to push it that way, harder the further the drag. Its panel pa
 stepping (space), takes one step at a time while paused (the right arrow), changes the speed and how
 hard a drag pushes, and turns on and off the debug layers that show the characters' shapes, joints,
 joint limits, contacts and centres of mass. It lists every problem in a rig file with its line and
-column, and its rig inspector lists a character's parts and joints with their settings. It draws
-with raylib on OpenGL 3.3 core, which on Linux needs the headers of X11 and OpenGL to build, such as
-Debian's `libgl-dev`, `libx11-dev`, `libxcursor-dev`, `libxi-dev`, `libxinerama-dev` and
-`libxrandr-dev`. It is built by every preset, unless `APLOMB_BUILD_SANDBOX` is off. How the code is
-written is in `CODING_STANDARDS.md`.
+column, and its rig inspector lists a character's parts and joints with their settings. It records a
+session as a replay file, starting it afresh with its characters made from the loaded rig, which the
+runner plays back to the same state hashes, and plays a replay back itself, saying at which step, if
+any, its state hash first differed from the replay's. It draws with raylib on OpenGL 3.3 core, which
+on Linux needs the headers of X11 and OpenGL to build, such as Debian's `libgl-dev`, `libx11-dev`,
+`libxcursor-dev`, `libxi-dev`, `libxinerama-dev` and `libxrandr-dev`. It is built by every preset,
+unless `APLOMB_BUILD_SANDBOX` is off. How the code is written is in `CODING_STANDARDS.md`.
 
 aplomb is under the MIT licence; see `LICENSE`. The libraries it ships with, and their licences,
 are in `THIRD_PARTY_NOTICES.md`.
