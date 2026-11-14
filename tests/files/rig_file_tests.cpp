@@ -320,8 +320,9 @@ TEST_CASE("a rig problem with a part as a whole is at the part, and one with the
     REQUIRE_FALSE(two_roots.has_value());
     std::vector<std::string> places;
     for (const aplomb::FileProblem& problem : two_roots.error().problems) {
-        places.push_back(std::format("{} {}", place_of(problem),
-                                     static_cast<int>(problem.rig_problem.value_or({}))));
+        places.push_back(
+            std::format("{} {}", place_of(problem),
+                        static_cast<int>(problem.rig_problem.value_or(aplomb::RigProblemCode{}))));
     }
     CHECK(places == std::vector<std::string>{
                         std::format("36:17 /parts/2/parent {}",

@@ -28,7 +28,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <system_error>
@@ -161,7 +160,8 @@ class ReplayFileReader {
             replay.initial = read_initial(*initial);
         }
         if (const std::optional<Field> steps = root->take("steps")) {
-            for (const Field& step : detail::read_array(*steps, file_).value_or({})) {
+            for (const Field& step :
+                 detail::read_array(*steps, file_).value_or(std::vector<Field>{})) {
                 replay.steps.push_back(read_step(step));
             }
         }
@@ -178,7 +178,8 @@ class ReplayFileReader {
             return initial;
         }
         if (const std::optional<Field> characters = reader->take("characters")) {
-            for (const Field& character : detail::read_array(*characters, file_).value_or({})) {
+            for (const Field& character :
+                 detail::read_array(*characters, file_).value_or(std::vector<Field>{})) {
                 initial.characters.push_back(
                     detail::read_initial_state(character, "character", file_));
             }
@@ -195,7 +196,8 @@ class ReplayFileReader {
             return step;
         }
         if (const std::optional<Field> messages = reader->take("messages")) {
-            for (const Field& message : detail::read_array(*messages, file_).value_or({})) {
+            for (const Field& message :
+                 detail::read_array(*messages, file_).value_or(std::vector<Field>{})) {
                 if (std::optional<Push> push = read_message(message)) {
                     step.pushes.push_back(*push);
                 }
@@ -257,11 +259,13 @@ void check_meaning(const ReplayDesc& replay, const pedantjson::Document& documen
         report(root / "scene", "the scene must be the name of a scene, not empty");
     }
     const std::size_t characters = replay.initial.characters.size();
-    for (const auto [step_index, step] : std::views::enumerate(replay.steps)) {
-        for (const auto [push_index, push] : std::views::enumerate(step.pushes)) {
+    // Indexed loops rather than std::views::enumerate, which Apple's libc++ lacks.
+    for (std::size_t step_index = 0; step_index < replay.steps.size(); ++step_index) {
+        const auto& pushes = replay.steps[step_index].pushes;
+        for (std::size_t push_index = 0; push_index < pushes.size(); ++push_index) {
+            const auto& push = pushes[push_index];
             if (push.character.index() >= characters) {
-                report(root / "steps" / static_cast<std::size_t>(step_index) / "messages" /
-                           static_cast<std::size_t>(push_index) / "character",
+                report(root / "steps" / step_index / "messages" / push_index / "character",
                        std::format("a push is to one of the replay's {} character{}, so its index "
                                    "is less than {}, not {}",
                                    characters, characters == 1 ? "" : "s", characters,
