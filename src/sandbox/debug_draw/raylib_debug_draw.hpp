@@ -18,7 +18,8 @@
 ///
 /// A frame goes `begin_frame()`, the frame's ImGui calls, `begin_scene()`, its drawing, then
 /// `end_scene()` and `end_frame()`. Lines are gathered over the scene and drawn at its end from one
-/// vertex buffer; shapes are drawn as they come, lit by a fixed light. There is one window, so one
+/// vertex buffer, the overlay lines last and without the depth test; shapes are drawn as they come,
+/// lit by a fixed light. There is one window, so one
 /// backend, at a time.
 ///
 /// A moved-from backend may only be destroyed or assigned to; anything else fires an assertion.
@@ -56,13 +57,14 @@ class RaylibDebugDraw final : public DebugDraw {
     /// \param view Where the scene is seen from.
     void begin_scene(const CameraView& view);
 
-    /// Ends drawing the scene, drawing the lines gathered since `begin_scene()`.
+    /// Ends drawing the scene, drawing the lines and overlay lines gathered since `begin_scene()`.
     void end_scene();
 
     /// Ends the frame: draws Dear ImGui's windows over the scene, and shows the frame.
     void end_frame();
 
     void line(JPH::Vec3 from, JPH::Vec3 to, JPH::Color color) override;
+    void overlay_line(JPH::Vec3 from, JPH::Vec3 to, JPH::Color color) override;
     void box(const aplomb::Transform& transform, JPH::Vec3 half_extents, JPH::Color color) override;
     void capsule(const aplomb::Transform& transform, float radius, float half_height,
                  JPH::Color color) override;

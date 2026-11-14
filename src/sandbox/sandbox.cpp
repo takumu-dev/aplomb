@@ -2,15 +2,23 @@
 
 #include "debug_draw/camera_view.hpp"
 #include "debug_draw/debug_draw.hpp"
+#include "layers/center_of_mass_layer.hpp"
+#include "layers/contacts_layer.hpp"
+#include "layers/ground.hpp"
+#include "layers/joint_limits_layer.hpp"
+#include "layers/joints_layer.hpp"
 #include "layers/shapes_layer.hpp"
+#include "panels/layers_panel.hpp"
 #include "panels/stepping_panel.hpp"
 #include "session.hpp"
+#include <aplomb/core/world.hpp>
 
 #include <imgui.h>
 
 #include <cfloat>
 #include <cstddef>
 #include <filesystem>
+#include <format>
 #include <utility>
 
 namespace {
@@ -38,7 +46,23 @@ void Sandbox::update(float frame_seconds) {
 }
 
 void Sandbox::draw(DebugDraw& draw) const {
-    draw_shapes_layer(session_.world(), session_.characters(), draw);
+    draw_ground(draw);
+    const aplomb::World& world = session_.world();
+    if (layers_.shapes) {
+        draw_shapes_layer(world, session_.characters(), draw);
+    }
+    if (layers_.joint_limits) {
+        draw_joint_limits_layer(world, session_.characters(), draw);
+    }
+    if (layers_.joints) {
+        draw_joints_layer(world, session_.characters(), draw);
+    }
+    if (layers_.contacts) {
+        draw_contacts_layer(session_.contacts(), draw);
+    }
+    if (layers_.center_of_mass) {
+        draw_center_of_mass_layer(world, session_.characters(), draw);
+    }
 }
 
 CameraView Sandbox::camera_view() const { return camera_.view(); }
@@ -62,6 +86,7 @@ void Sandbox::draw_panels() {
     // The panel grows with the list of characters, at a width that leaves its widgets room.
     ImGui::SetNextWindowSizeConstraints({panel_width, 0.0F}, {panel_width, FLT_MAX});
     if (ImGui::Begin("Sandbox", nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextUnformatted(std::format("{:.0f} FPS", ImGui::GetIO().Framerate).c_str());
         if (ImGui::CollapsingHeader("Stepping", ImGuiTreeNodeFlags_DefaultOpen)) {
             draw_stepping_panel(clock_, session_.steps_taken(), session_.step_rate());
         }
@@ -71,10 +96,14 @@ void Sandbox::draw_panels() {
         if (ImGui::CollapsingHeader("Characters", ImGuiTreeNodeFlags_DefaultOpen)) {
             characters_.draw(session_, rig_file_.rig());
         }
+        if (ImGui::CollapsingHeader("Layers", ImGuiTreeNodeFlags_DefaultOpen)) {
+            draw_layers_panel(layers_);
+        }
         if (ImGui::CollapsingHeader("Camera")) {
             ImGui::TextUnformatted("Right drag: orbit\nMiddle drag, or shift and right drag: pan\n"
                                    "Wheel: zoom");
         }
     }
     ImGui::End();
+    rig_inspector_.draw(session_);
 }

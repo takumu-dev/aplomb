@@ -6,8 +6,8 @@
 
 #include <span>
 
-/// Draws the ground, as a grid of lines on its top face, and every part of every character, each
-/// character in a colour of its own that it keeps while others come and go.
+/// Draws every part of every character, each character in a colour of its own that it keeps while
+/// others come and go.
 ///
 /// \param world The world the characters are in.
 /// \param characters The characters to draw.

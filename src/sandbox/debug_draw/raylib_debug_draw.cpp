@@ -136,14 +136,14 @@ struct RaylibDebugDraw::Resources {
         CloseWindow();
     }
 
-    // Draws the lines gathered over the scene from a render batch of their own, a single vertex
-    // buffer grown to hold them all, so that rlgl never splits them into several draws.
-    void draw_lines() {
-        if (line_vertices.empty()) {
+    // Draws lines gathered over the scene from a render batch of their own, a single vertex buffer
+    // grown to hold them all, so that rlgl never splits them into several draws.
+    void draw_lines(std::vector<LineVertex>& vertices) {
+        if (vertices.empty()) {
             return;
         }
         // rlgl counts a batch's size in quads of four vertices, and keeps one quad spare.
-        const int needed = static_cast<int>(line_vertices.size() / 4) + 2;
+        const int needed = static_cast<int>(vertices.size() / 4) + 2;
         if (needed > line_batch_elements) {
             if (line_batch_elements > 0) {
                 rlUnloadRenderBatch(line_batch);
@@ -153,14 +153,25 @@ struct RaylibDebugDraw::Resources {
         }
         rlSetRenderBatchActive(&line_batch);
         rlBegin(RL_LINES);
-        for (const LineVertex& vertex : line_vertices) {
+        for (const LineVertex& vertex : vertices) {
             const auto [red, green, blue, alpha] = channels(vertex.color);
             rlColor4ub(red, green, blue, alpha);
             rlVertex3f(vertex.position.GetX(), vertex.position.GetY(), vertex.position.GetZ());
         }
         rlEnd();
+        // Going back to rlgl's own batch draws this one.
         rlSetRenderBatchActive(nullptr);
-        line_vertices.clear();
+        vertices.clear();
+    }
+
+    // Draws the lines, then the overlay lines over everything drawn before them.
+    void draw_all_lines() {
+        draw_lines(line_vertices);
+        if (!overlay_vertices.empty()) {
+            rlDisableDepthTest();
+            draw_lines(overlay_vertices);
+            rlEnableDepthTest();
+        }
     }
 
     ::Material material{};
@@ -169,6 +180,7 @@ struct RaylibDebugDraw::Resources {
     ::Mesh cylinder{};
     // Two for each line, its ends.
     std::vector<LineVertex> line_vertices;
+    std::vector<LineVertex> overlay_vertices;
     rlRenderBatch line_batch{};
     int line_batch_elements = 0;
 };
@@ -245,7 +257,7 @@ void RaylibDebugDraw::begin_scene(const CameraView& view) {
 }
 
 void RaylibDebugDraw::end_scene() {
-    resources().draw_lines();
+    resources().draw_all_lines();
     EndMode3D();
 }
 
@@ -259,6 +271,12 @@ void RaylibDebugDraw::line(JPH::Vec3 from, JPH::Vec3 to, JPH::Color color) {
     Resources& drawn = resources();
     drawn.line_vertices.push_back({.position = from, .color = color});
     drawn.line_vertices.push_back({.position = to, .color = color});
+}
+
+void RaylibDebugDraw::overlay_line(JPH::Vec3 from, JPH::Vec3 to, JPH::Color color) {
+    Resources& drawn = resources();
+    drawn.overlay_vertices.push_back({.position = from, .color = color});
+    drawn.overlay_vertices.push_back({.position = to, .color = color});
 }
 
 void RaylibDebugDraw::box(const aplomb::Transform& transform, JPH::Vec3 half_extents,

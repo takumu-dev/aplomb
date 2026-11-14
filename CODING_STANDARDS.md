@@ -66,7 +66,8 @@ departs from them, it says so.
   application rather than a library. It uses only the public interfaces of the core,
   `aplomb::files` and `aplomb::scenes`, so that it is a host like any other. It draws through the
   `DebugDraw` interface in `debug_draw/`, and only that interface's raylib backend includes raylib;
-  its panels, in `panels/`, use Dear ImGui. Its dependencies are in the vcpkg manifest's `sandbox`
+  its debug layers, in `layers/`, draw only through that interface, and its panels, in `panels/`,
+  use Dear ImGui. Its dependencies are in the vcpkg manifest's `sandbox`
   feature, and `APLOMB_BUILD_SANDBOX` turns it off.
 - A target includes only the headers of what it links, since each public include tree comes only
   with its library. Jolt's types may appear in the core's public headers, since aplomb is built on
