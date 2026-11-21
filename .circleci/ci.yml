@@ -1,0 +1,389 @@
+# The pipeline itself, continued from config.yml with the name of the CI image.
+#
+# The Linux jobs run in that image, built from .circleci/image for x86-64 and ARM64 the first time a
+# pipeline asks for it, and pulled from GHCR every time after. Each of them runs one workflow preset,
+# just as a developer does. The `ci` job passes when every Linux job and lint pass, and is the check
+# a pull request into develop must pass.
+#
+# Windows and macOS jobs cost far more, and draw on the free plan's credits rather than the open
+# source plan's, so they aren't part of the `ci` check. windows-msvc-release runs on every branch
+# but develop and main, which it has already passed on its way in. macos-clang-release, dearer
+# still, runs on release branches alone. When a schedule triggers the pipeline, as the project
+# settings do every Monday on develop, both run and nothing else does.
+#
+# Building the image needs the `ghcr` context, holding GHCR_TOKEN, a token of takumu-dev's allowed
+# to write packages. Once it exists, the image is public, so a pull request from a fork, which gets
+# no context, still runs.
+version: 2.1
+
+parameters:
+  # The CI image's full name, tag included.
+  ci-image:
+    type: string
+    default: ""
+
+executors:
+  linux:
+    parameters:
+      resource_class:
+        type: string
+        default: large
+    docker:
+      - image: << pipeline.parameters.ci-image >>
+    resource_class: << parameters.resource_class >>
+  image-builder:
+    parameters:
+      resource_class:
+        type: string
+    machine:
+      image: ubuntu-2404:current
+    resource_class: << parameters.resource_class >>
+
+commands:
+  # Keeps what a workflow preset's run leaves: its test results, its metrics files, and vcpkg's log.
+  store-results:
+    parameters:
+      preset:
+        type: string
+      tests:
+        type: boolean
+        default: true
+    steps:
+      - when:
+          condition: << parameters.tests >>
+          steps:
+            - store_test_results:
+                path: build/<< parameters.preset >>/junit.xml
+            # A failed run's file still names the first step at which two runs differed.
+            - store_artifacts:
+                path: build/<< parameters.preset >>/metrics
+                destination: metrics
+      - store_artifacts:
+          path: build/<< parameters.preset >>/vcpkg-manifest-install.log
+          destination: vcpkg-manifest-install.log
+
+  login-to-ghcr:
+    steps:
+      - run:
+          name: Log in to GHCR
+          command: echo "${GHCR_TOKEN}" | docker login ghcr.io --username takumu-dev --password-stdin
+
+  # Before logging in, which a pull request from a fork can't do.
+  stop-if-image-exists:
+    parameters:
+      image:
+        type: string
+    steps:
+      - run:
+          name: Stop if the image exists
+          command: |
+            if docker manifest inspect "<< parameters.image >>" > /dev/null; then
+              circleci-agent step halt
+            fi
+
+jobs:
+  ci-image:
+    parameters:
+      arch:
+        type: enum
+        enum: [amd64, arm64]
+      resource_class:
+        type: string
+    executor:
+      name: image-builder
+      resource_class: << parameters.resource_class >>
+    steps:
+      - stop-if-image-exists:
+          image: << pipeline.parameters.ci-image >>-<< parameters.arch >>
+      - login-to-ghcr
+      - checkout
+      - run:
+          name: Build and push the image
+          command: |
+            image="<< pipeline.parameters.ci-image >>-<< parameters.arch >>"
+            docker build --tag "${image}" .circleci/image
+            docker push "${image}"
+
+  ci-image-manifest:
+    executor:
+      name: image-builder
+      resource_class: medium
+    steps:
+      - stop-if-image-exists:
+          image: << pipeline.parameters.ci-image >>
+      - login-to-ghcr
+      - run:
+          name: Join both architectures under one tag
+          command: |
+            image="<< pipeline.parameters.ci-image >>"
+            docker buildx imagetools create --tag "${image}" "${image}-amd64" "${image}-arm64"
+
+  workflow-preset:
+    parameters:
+      executor:
+        type: executor
+      preset:
+        type: string
+      tests:
+        type: boolean
+        default: true
+    executor: << parameters.executor >>
+    environment:
+      # A Docker job sees the host's processors, not the four its resource class gives it, and Ninja
+      # would run a compile for each and run out of the job's memory.
+      CMAKE_BUILD_PARALLEL_LEVEL: 4
+      CMAKE_CXX_COMPILER_LAUNCHER: ccache
+      CCACHE_DIR: /root/.cache/ccache
+      CCACHE_MAXSIZE: 500M
+      VCPKG_DEFAULT_BINARY_CACHE: /root/.cache/vcpkg/archives
+    steps:
+      - checkout
+      - run:
+          name: Check vcpkg's registry out at the manifest's baseline
+          command: |
+            baseline="$(jq -r '."builtin-baseline"' vcpkg.json)"
+            git -C "${VCPKG_ROOT}" fetch --quiet origin "${baseline}"
+            git -C "${VCPKG_ROOT}" checkout --quiet --detach "${baseline}"
+      - run:
+          name: Key the dependency cache
+          command: |
+            # vcpkg's binary cache is keyed by each package's own hash, so an older cache is a safe
+            # start; a new key only keeps the cache from growing stale.
+            { cat vcpkg.json vcpkg-configuration.json; git rev-parse HEAD:ports; } > /tmp/vcpkg-key
+            mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
+      - restore_cache:
+          keys:
+            - vcpkg-v1-{{ arch }}-{{ checksum "/tmp/vcpkg-key" }}
+            - vcpkg-v1-{{ arch }}-
+      - restore_cache:
+          keys:
+            - ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-{{ .Revision }}
+            - ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-
+            - ccache-v1-<< parameters.preset >>-{{ arch }}-
+      - run:
+          name: Run the << parameters.preset >> workflow
+          command: |
+            ccache --zero-stats
+            cmake --workflow --preset << parameters.preset >>
+      - run:
+          name: Show the compiler cache's statistics
+          command: ccache --show-stats
+          when: always
+      - save_cache:
+          key: vcpkg-v1-{{ arch }}-{{ checksum "/tmp/vcpkg-key" }}
+          paths:
+            - /root/.cache/vcpkg/archives
+      - save_cache:
+          key: ccache-v1-<< parameters.preset >>-{{ arch }}-{{ .Branch }}-{{ .Revision }}
+          paths:
+            - /root/.cache/ccache
+      - store-results:
+          preset: << parameters.preset >>
+          tests: << parameters.tests >>
+
+  # Runs on a Windows Server image at a dated tag, so that the MSVC toolsets it carries hold still.
+  # The toolset the job builds with is named, since vcvarsall.bat would set up an older one. The
+  # dependencies are built by whichever toolset vcpkg chooses, which may be older, and a newer
+  # toolset links them.
+  windows-msvc-release:
+    machine:
+      image: windows-server-2025-gui:2026.10.1
+      shell: powershell.exe -ExecutionPolicy Bypass
+    resource_class: windows.medium
+    environment:
+      MSVC_VERSION: "14.52"
+      CI_TOOLS: C:\ci\tools
+      VCPKG_ROOT: C:\ci\vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: C:\ci\vcpkg-cache
+    # Each step runs in Windows PowerShell, which stops at a native command that fails only when
+    # told to, and hands the workflow to PowerShell 7, passing on how it exited.
+    steps:
+      - checkout
+      - run:
+          name: Install CMake and Ninja
+          command: |
+            python -m venv $env:CI_TOOLS
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & "$env:CI_TOOLS\Scripts\python.exe" -m pip install --disable-pip-version-check `
+                cmake==4.4.5 ninja==1.13.2
+            exit $LASTEXITCODE
+      # vcpkg reads each port's version with git in an environment of its own, which on Windows
+      # holds nothing else, so git can't reach the network for a blob a partial clone lacks, and the
+      # clone is a full one.
+      - run:
+          name: Set up vcpkg at the manifest's baseline
+          command: |
+            $ErrorActionPreference = 'Stop'
+            $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+            git clone --quiet https://github.com/microsoft/vcpkg $env:VCPKG_ROOT
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            git -C $env:VCPKG_ROOT checkout --quiet $baseline
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            & "$env:VCPKG_ROOT\bootstrap-vcpkg.bat" -disableMetrics
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            New-Item -ItemType Directory -Force -Path $env:VCPKG_DEFAULT_BINARY_CACHE | Out-Null
+      # The key names the toolset and the image too. A key is saved once, so a cache restored from
+      # an older toolset's would otherwise never give way to one of the dependencies built afresh.
+      - run:
+          name: Key the dependency cache
+          command: |
+            Get-Content vcpkg.json, vcpkg-configuration.json | Set-Content C:\ci\vcpkg-key
+            git rev-parse HEAD:ports | Add-Content C:\ci\vcpkg-key
+            "windows-server-2025-gui:2026.10.1 MSVC $env:MSVC_VERSION" | Add-Content C:\ci\vcpkg-key
+      - restore_cache:
+          keys:
+            - vcpkg-v1-windows-{{ checksum "C:/ci/vcpkg-key" }}
+            - vcpkg-v1-windows-
+      - run:
+          name: Run the windows-msvc-release workflow
+          command: |
+            pwsh -NoProfile -File .circleci/windows/workflow.ps1 `
+                -MsvcVersion $env:MSVC_VERSION -Preset windows-msvc-release
+            exit $LASTEXITCODE
+      - save_cache:
+          key: vcpkg-v1-windows-{{ checksum "C:/ci/vcpkg-key" }}
+          paths:
+            - C:\ci\vcpkg-cache
+      - store-results:
+          preset: windows-msvc-release
+
+  # Runs on CircleCI's image of the Xcode whose Apple Clang is aplomb's floor, which the job checks.
+  macos-clang-release:
+    macos:
+      xcode: "27.2"
+    resource_class: m4pro.medium
+    environment:
+      XCODE_VERSION: "27.2"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      VCPKG_ROOT: /tmp/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: /tmp/vcpkg-cache
+    steps:
+      - checkout
+      - run:
+          name: Check that the job builds with the floor's Xcode
+          command: |
+            xcodebuild -version
+            /usr/bin/clang++ --version
+            version=$(xcodebuild -version | sed -n 's/^Xcode //p')
+            case $version in
+              "$XCODE_VERSION" | "$XCODE_VERSION".*) ;;
+              *) echo "The job builds with Xcode $version, not $XCODE_VERSION" >&2; exit 1 ;;
+            esac
+      # The image has neither.
+      - run:
+          name: Install CMake and Ninja
+          command: brew install cmake ninja
+      # vcpkg reads the ports at the versions the manifest names from the registry's history, so a
+      # shallow clone won't do; a blobless one fetches only the files vcpkg reads.
+      - run:
+          name: Set up vcpkg at the manifest's baseline
+          command: |
+            baseline="$(jq -r '."builtin-baseline"' vcpkg.json)"
+            git clone --quiet --filter=blob:none --no-checkout \
+              https://github.com/microsoft/vcpkg "${VCPKG_ROOT}"
+            git -C "${VCPKG_ROOT}" checkout --quiet "${baseline}"
+            "${VCPKG_ROOT}/bootstrap-vcpkg.sh" -disableMetrics
+            mkdir -p "${VCPKG_DEFAULT_BINARY_CACHE}"
+      # The key names the Xcode too, for the same reason as the Windows job's names its toolset.
+      - run:
+          name: Key the dependency cache
+          command: |
+            {
+              cat vcpkg.json vcpkg-configuration.json
+              git rev-parse HEAD:ports
+              echo "Xcode ${XCODE_VERSION}"
+            } > /tmp/vcpkg-key
+      - restore_cache:
+          keys:
+            - vcpkg-v1-macos-{{ checksum "/tmp/vcpkg-key" }}
+            - vcpkg-v1-macos-
+      - run:
+          name: Run the macos-clang-release workflow
+          command: cmake --workflow --preset macos-clang-release
+      - save_cache:
+          key: vcpkg-v1-macos-{{ checksum "/tmp/vcpkg-key" }}
+          paths:
+            - /tmp/vcpkg-cache
+      - store-results:
+          preset: macos-clang-release
+
+  ci:
+    docker:
+      - image: cimg/base:2026.11
+    resource_class: small
+    steps:
+      - run:
+          name: Every Linux job and lint passed
+          command: "true"
+
+workflows:
+  ci:
+    when:
+      not:
+        equal: [scheduled_pipeline, << pipeline.trigger_source >>]
+    jobs:
+      - ci-image:
+          name: ci-image-amd64
+          context: ghcr
+          arch: amd64
+          resource_class: large
+      - ci-image:
+          name: ci-image-arm64
+          context: ghcr
+          arch: arm64
+          resource_class: arm.large
+      - ci-image-manifest:
+          context: ghcr
+          requires:
+            - ci-image-amd64
+            - ci-image-arm64
+      - workflow-preset:
+          name: linux-gcc-debug
+          executor: linux
+          preset: linux-gcc-debug
+          requires:
+            - ci-image-manifest
+      - workflow-preset:
+          name: linux-clang-release
+          executor: linux
+          preset: linux-clang-release
+          requires:
+            - ci-image-manifest
+      - workflow-preset:
+          name: linux-arm64-release
+          executor:
+            name: linux
+            resource_class: arm.large
+          preset: linux-clang-release
+          requires:
+            - ci-image-manifest
+      - workflow-preset:
+          name: lint
+          executor: linux
+          preset: lint
+          tests: false
+          requires:
+            - ci-image-manifest
+      - ci:
+          requires:
+            - linux-gcc-debug
+            - linux-clang-release
+            - linux-arm64-release
+            - lint
+      - windows-msvc-release:
+          filters:
+            branches:
+              ignore:
+                - develop
+                - main
+      - macos-clang-release:
+          filters:
+            branches:
+              only: /^release\/.*/
+
+  weekly:
+    when:
+      equal: [scheduled_pipeline, << pipeline.trigger_source >>]
+    jobs:
+      - windows-msvc-release
+      - macos-clang-release

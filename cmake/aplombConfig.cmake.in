@@ -1,0 +1,12 @@
+# aplomb's CMake package, which gives aplomb::core and aplomb::files. Both are static libraries, so
+# it finds what they link the same way aplomb's build did: Jolt, whose definitions a host must
+# compile with, and pedantjson, which aplomb::files links privately.
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+find_dependency(Jolt CONFIG)
+find_dependency(pedantjson CONFIG)
+
+include("${CMAKE_CURRENT_LIST_DIR}/aplombTargets.cmake")
+
+check_required_components(aplomb)

@@ -1,0 +1,23 @@
+{
+  "format": "aplomb.replay",
+  "version": 1,
+  "aplomb_version": "0.0.1",
+  "jolt_version": "5.5.0",
+  "rig_file_hash": "e50d54446ab308a3",
+  "step_rate": 60,
+  "seed": 1,
+  "scene": "flat_ground",
+  "initial": {
+    "characters": [{"root_position": [0, 0.2, 0], "pose": "bind"}],
+    "state_hash": "0000000000000000"
+  },
+  "steps": [
+    {"messages": [], "state_hash": "0000000000000000"},
+    {
+      "messages": [
+        {"message": "push", "character": 0, "part": 0, "world_point": [0, 0.5, 0.1], "impulse": [0, 0, -40]}
+      ],
+      "state_hash": "0000000000000000"
+    }
+  ]
+}

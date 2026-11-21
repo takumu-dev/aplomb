@@ -1,0 +1,15 @@
+{
+  "format": "aplomb.rig",
+  "version": 1,
+  "name": "box",
+  "parts": [
+    {
+      "name": "pelvis",
+      "parent": null,
+      "shape": {"type": "box", "half_extents": [0.15, 0.08, 0.1]},
+      "mass": 10,
+      "bind_position": [0, 0.5, 0],
+      "bind_rotation": [0, 0, 0, 1]
+    }
+  ]
+}

@@ -1,0 +1,14 @@
+{
+  "format": "aplomb.scenario",
+  "version": 1,
+  "name": "two_problems",
+  "rig": "../../../assets/rigs/humanoid.json",
+  "scene": "flat_ground",
+  "duration_s": "3",
+  "seed": 1,
+  "step_rate": 60,
+  "initial": {"root_position": [0, 0.2, 0], "pose": "bind"},
+  "timeline": [],
+  "metrics": [],
+  "pass": {}
+}
