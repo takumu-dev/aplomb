@@ -162,3 +162,40 @@ if(DEFINED APLOMB_THIRD_PARTY_NOTICES)
             "${APLOMB_THIRD_PARTY_NOTICES}" "${PROJECT_SOURCE_DIR}/THIRD_PARTY_NOTICES.md"
     )
 endif()
+
+# A host's project that uses aplomb, built against the package installing aplomb gives and with
+# aplomb as a subproject, configured as this build was. It links with the options aplomb's own
+# programs link with, such as its sanitizers' runtimes.
+get_directory_property(link_options DIRECTORY "${PROJECT_SOURCE_DIR}" LINK_OPTIONS)
+list(JOIN link_options " " link_options)
+set(host_project_modes subproject)
+if(APLOMB_INSTALL)
+    list(APPEND host_project_modes package)
+endif()
+foreach(mode IN LISTS host_project_modes)
+    if(mode STREQUAL "package")
+        set(description "a host's project builds and runs against aplomb's installed package")
+    else()
+        set(description "a host's project builds and runs with aplomb as a subproject")
+    endif()
+    aplomb_add_script_test(build "${description}"
+        SCRIPT host_project.cmake
+        DEFINITIONS
+            MODE=${mode}
+            "APLOMB_SOURCE_DIR=${PROJECT_SOURCE_DIR}"
+            "APLOMB_BINARY_DIR=${PROJECT_BINARY_DIR}"
+            "APLOMB_VERSION=${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}"
+            "APLOMB_EXCEPTIONS=${APLOMB_EXCEPTIONS}"
+            "CONFIG=$<CONFIG>"
+            "GENERATOR=${CMAKE_GENERATOR}"
+            "MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
+            "CXX_COMPILER=${CMAKE_CXX_COMPILER}"
+            "CXX_FLAGS=${CMAKE_CXX_FLAGS}"
+            "EXE_LINKER_FLAGS=${CMAKE_EXE_LINKER_FLAGS} ${link_options}"
+            "TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE}"
+            "VCPKG_INSTALLED_DIR=${VCPKG_INSTALLED_DIR}"
+            "VCPKG_TARGET_TRIPLET=${VCPKG_TARGET_TRIPLET}"
+            "RIG=${PROJECT_SOURCE_DIR}/assets/rigs/humanoid.json"
+            "STDOUT_MATCHES=aplomb ${PROJECT_VERSION} on Jolt [0-9.]+: state hash [0-9a-f]+"
+    )
+endforeach()

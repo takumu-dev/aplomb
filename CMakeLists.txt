@@ -5,7 +5,8 @@
 #
 # Every supported build is a preset in CMakePresets.json, so a developer and CI run the same
 # `cmake --workflow --preset <preset>`. Dependencies come only through find_package; the build never
-# downloads anything.
+# downloads anything. Installing gives a host aplomb::core and aplomb::files as a CMake package,
+# found with find_package(aplomb); a host can add aplomb as a subproject instead.
 cmake_minimum_required(VERSION 4.4)
 
 project(aplomb
@@ -54,6 +55,10 @@ option(APLOMB_BUILD_TESTS "Build aplomb's tests." ${PROJECT_IS_TOP_LEVEL})
 option(APLOMB_BUILD_SANDBOX "Build the sandbox, which needs raylib, Dear ImGui and rlImGui."
     ${PROJECT_IS_TOP_LEVEL}
 )
+# A host that adds aplomb as a subproject installs it only if it asks to.
+option(APLOMB_INSTALL "Install aplomb::core and aplomb::files as a CMake package."
+    ${PROJECT_IS_TOP_LEVEL}
+)
 # Many hosts build without exceptions, and the library must build that way too. The tests keep
 # exceptions either way, since Catch2 needs them.
 option(APLOMB_EXCEPTIONS "Build the library with exceptions enabled." ON)
@@ -67,6 +72,10 @@ add_subdirectory(src/files)
 add_subdirectory(src/scenes)
 if(APLOMB_BUILD_SANDBOX)
     add_subdirectory(src/sandbox)
+endif()
+
+if(APLOMB_INSTALL)
+    include(AplombInstall)
 endif()
 
 if(APLOMB_BUILD_TESTS)
