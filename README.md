@@ -40,11 +40,79 @@ on Linux needs the headers of X11 and OpenGL to build, such as Debian's `libgl-d
 `libxcursor-dev`, `libxi-dev`, `libxinerama-dev` and `libxrandr-dev`. It is built by every preset,
 unless `APLOMB_BUILD_SANDBOX` is off. How the code is written is in `CODING_STANDARDS.md`.
 
-aplomb builds with CMake 4.4 or newer from the presets in `CMakePresets.json`, which take its
-dependencies from vcpkg: on Linux with GCC 16 or Clang 23, on Windows with MSVC 14.52, and on macOS
-with the Apple Clang of Xcode 27.2, or anything newer. Linux is where it is developed and watched in
-the sandbox. CI builds and tests it on Windows and macOS too, where every scenario must end with
-the golden hash it ends with on Linux.
+## Building
+
+aplomb builds with CMake 4.4 or newer, from the presets in `CMakePresets.json`. Each takes the
+dependencies from vcpkg, as `vcpkg.json` and the overlay ports in `ports/` give them, so set
+`VCPKG_ROOT` to a clone of vcpkg, then configure, build and test with one of the workflow presets:
+
+```bash
+cmake --workflow --preset linux-gcc-release
+```
+
+| Platform | Compiler                                | Presets                                      |
+| -------- | --------------------------------------- | -------------------------------------------- |
+| Linux    | GCC 16 or newer                         | `linux-gcc-debug`, `linux-gcc-release`       |
+| Linux    | Clang 23 or newer                       | `linux-clang-debug`, `linux-clang-release`   |
+| Windows  | MSVC 14.52 or newer                     | `windows-msvc-debug`, `windows-msvc-release` |
+| macOS    | the Apple Clang of Xcode 27.2, or newer | `macos-clang-debug`, `macos-clang-release`   |
+
+Configuring with an older compiler stops, naming the version it needs. The MSVC presets run from a
+developer command prompt for MSVC 14.52. The debug presets build with AddressSanitizer and
+UndefinedBehaviorSanitizer, except MSVC's, and the Clang release presets build the library without
+exceptions.
+Linux is where aplomb is developed and watched in the sandbox. CI builds and tests it on Windows and
+macOS too, where every scenario must end with the golden hash it ends with on Linux.
+
+## Using aplomb in a project
+
+A host links two static libraries: `aplomb::core`, the world and its characters, and
+`aplomb::files`, which reads rig files. aplomb finds what they need with `find_package` alone, so
+the host supplies Jolt 5.6.0 or newer and pedantjson 0.2.0 or newer, through vcpkg, another package
+manager or builds of its own. The world's interface is made of Jolt's types, so aplomb compiles
+against the definitions in Jolt's CMake package, and must be built against the Jolt the host links.
+The same results on every platform, and the golden hashes, need a Jolt built with
+`CROSS_PLATFORM_DETERMINISTIC` on, as the overlay port in `ports/joltphysics` builds it.
+
+The tests build a host's project both of the ways below.
+
+### As an installed package
+
+Installing a build of aplomb gives the two libraries, their headers and a CMake package, along with
+aplomb's licence and the third-party notices; the scenes, the runner and the sandbox stay behind.
+Here it goes to `/opt/aplomb`:
+
+```bash
+cmake --install build/linux-gcc-release --prefix /opt/aplomb
+```
+
+With the prefix on its `CMAKE_PREFIX_PATH`, the host finds the package, which finds Jolt and
+pedantjson in turn:
+
+```cmake
+find_package(aplomb 0.1 CONFIG REQUIRED)
+target_link_libraries(my_game PRIVATE aplomb::core aplomb::files)
+```
+
+Until 1.0, a minor version may break what the last one offered, so the package answers a request
+for its own minor version alone.
+
+### As a subproject
+
+The host adds aplomb's source to its own build, which finds Jolt and pedantjson:
+
+```cmake
+add_subdirectory(external/aplomb)
+target_link_libraries(my_game PRIVATE aplomb::core aplomb::files)
+```
+
+As a subproject, aplomb builds no tests and no sandbox, and installs nothing, unless the host
+turns `APLOMB_BUILD_TESTS`, `APLOMB_BUILD_SANDBOX` or `APLOMB_INSTALL` on. Its compiler settings
+apply to its own targets alone, and its warnings become errors only where the host sets
+`CMAKE_COMPILE_WARNING_AS_ERROR`. A host that builds without exceptions turns `APLOMB_EXCEPTIONS`
+off, with GCC or Clang, and the library builds without them too.
+
+## Licence
 
 aplomb is under the MIT licence; see `LICENSE`. The libraries it ships with, and their licences,
 are in `THIRD_PARTY_NOTICES.md`.
