@@ -276,9 +276,11 @@ function(_aplomb_port_manifest installed_dir registry overlays package out_manif
 
     set(reason "")
     if(location MATCHES "^git\\+.*@([0-9a-f]+)$")
+        # find_package(Git) may clear the match, as it does on Windows.
+        set(tree "${CMAKE_MATCH_1}")
         find_package(Git REQUIRED)
         execute_process(
-            COMMAND "${GIT_EXECUTABLE}" -C "${registry}" cat-file blob "${CMAKE_MATCH_1}:vcpkg.json"
+            COMMAND "${GIT_EXECUTABLE}" -C "${registry}" cat-file blob "${tree}:vcpkg.json"
             OUTPUT_VARIABLE manifest
             RESULT_VARIABLE result
             ERROR_VARIABLE git_error
