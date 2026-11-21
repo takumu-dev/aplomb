@@ -274,18 +274,21 @@ function(_aplomb_port_manifest installed_dir registry overlays package out_manif
         string(JSON location GET "${spdx}" downloadLocation)
     endif()
 
+    set(reason "")
     if(location MATCHES "^git\\+.*@([0-9a-f]+)$")
         find_package(Git REQUIRED)
         execute_process(
             COMMAND "${GIT_EXECUTABLE}" -C "${registry}" cat-file blob "${CMAKE_MATCH_1}:vcpkg.json"
             OUTPUT_VARIABLE manifest
             RESULT_VARIABLE result
-            ERROR_QUIET
+            ERROR_VARIABLE git_error
+            ERROR_STRIP_TRAILING_WHITESPACE
         )
         if(result EQUAL 0)
             set(${out_manifest} "${manifest}" PARENT_SCOPE)
             return()
         endif()
+        set(reason " git couldn't read it from ${registry}: ${git_error}")
     elseif(location STREQUAL "NOASSERTION")
         foreach(overlay IN LISTS overlays)
             if(EXISTS "${overlay}/${name}/vcpkg.json")
@@ -297,7 +300,7 @@ function(_aplomb_port_manifest installed_dir registry overlays package out_manif
     endif()
     message(FATAL_ERROR
         "The licence check can't find the manifest of the port ${package}, so it can't tell which of "
-        "its dependencies are host tools."
+        "its dependencies are host tools.${reason}"
     )
 endfunction()
 
