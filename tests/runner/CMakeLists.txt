@@ -94,7 +94,8 @@ aplomb_add_runner_test("the runner reports every problem in a scenario file"
 aplomb_add_runner_test("the runner finds a scenario's rig file beside the scenario file"
     SCENARIO missing_rig
     EXPECTED_RESULT 2
-    STDERR_MATCHES "the rig file \"[^\"]*runner/scenarios/no_such_rig.json\" can't be read"
+    # The rig file's path is joined to the scenario's directory, with Windows's separator there.
+    STDERR_MATCHES "the rig file \"[^\"]*runner/scenarios[/\\\\]no_such_rig.json\" can't be read"
 )
 aplomb_add_runner_test("the runner names a scene that doesn't exist"
     SCENARIO unknown_scene

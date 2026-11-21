@@ -3,6 +3,11 @@
 # build of aplomb takes this one. Jolt's CMake package carries the definitions that match these
 # options, so whatever links Jolt::Jolt compiles against exactly this build.
 #
+# Jolt's floating-point exceptions are off too. Jolt turns them on for MSVC alone, and its job
+# threads then trap an invalid operation, such as one MSVC's optimiser works out ahead of a branch
+# that throws the result away. With them off, an MSVC build steps as GCC and Clang builds do, whose
+# job threads never trap.
+#
 # The tag is pinned by the version, and its archive by the hash. Moving to another release changes
 # both, in a commit of its own.
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
@@ -22,6 +27,7 @@ vcpkg_cmake_configure(
     OPTIONS
         -DCROSS_PLATFORM_DETERMINISTIC=ON
         -DDOUBLE_PRECISION=OFF
+        -DFLOATING_POINT_EXCEPTIONS_ENABLED=OFF
         -DDEBUG_RENDERER_IN_DEBUG_AND_RELEASE=OFF
         -DPROFILER_IN_DEBUG_AND_RELEASE=OFF
         -DCPP_RTTI_ENABLED=OFF

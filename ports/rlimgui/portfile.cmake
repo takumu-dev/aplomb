@@ -15,6 +15,10 @@ vcpkg_from_github(
     HEAD_REF main
 )
 file(COPY "${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt" DESTINATION "${SOURCE_PATH}")
+# rlImGui.h takes raylib's USE_LIBTYPE_SHARED for its own, so on Windows, where raylib is a DLL, it
+# declares rlImGui's functions imported from one too, and a program fails to link the static
+# library. The header declares them as a static library's instead.
+vcpkg_replace_string("${SOURCE_PATH}/rlImGui.h" "#elif defined(USE_LIBTYPE_SHARED)" "#elif 0")
 
 vcpkg_cmake_configure(SOURCE_PATH "${SOURCE_PATH}")
 vcpkg_cmake_install()

@@ -76,7 +76,8 @@ class RigFileReader {
         }
         detail::read_into(root->take("name"), rig.name, detail::read_string, file_);
         if (const std::optional<Field> parts = root->take("parts")) {
-            for (const Field& part : detail::read_array(*parts, file_).value_or({})) {
+            for (const Field& part :
+                 detail::read_array(*parts, file_).value_or(std::vector<Field>{})) {
                 rig.parts.push_back(read_part(part));
             }
         }

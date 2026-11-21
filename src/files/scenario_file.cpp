@@ -20,7 +20,6 @@
 #include <format>
 #include <functional>
 #include <optional>
-#include <ranges>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -107,7 +106,7 @@ class ScenarioFileReader {
     // keys checked, so its reader doesn't finish.
     std::vector<TimelinePush> read_timeline(const Field& field) {
         std::vector<TimelinePush> timeline;
-        for (const Field& entry : detail::read_array(field, file_).value_or({})) {
+        for (const Field& entry : detail::read_array(field, file_).value_or(std::vector<Field>{})) {
             std::optional<detail::ObjectReader> reader =
                 detail::read_object(entry, "timeline entry", file_);
             if (!reader.has_value()) {
@@ -141,12 +140,13 @@ class ScenarioFileReader {
     std::vector<Metric> read_metrics(const Field& field) {
         std::vector<Metric> metrics;
         std::vector<std::size_t> lines;
-        for (const Field& element : detail::read_array(field, file_).value_or({})) {
+        for (const Field& element :
+             detail::read_array(field, file_).value_or(std::vector<Field>{})) {
             const std::optional<std::string> name = detail::read_string(element, file_);
             if (!name.has_value()) {
                 continue;
             }
-            const auto* const metric = std::ranges::find(all_metrics, *name, metric_name);
+            const auto metric = std::ranges::find(all_metrics, *name, metric_name);
             if (metric == all_metrics.end()) {
                 file_.get().report_at(element, FileProblemCode::invalid_value,
                                       std::format("a metric is {}, not \"{}\"",
@@ -259,8 +259,10 @@ void check_meaning(const ScenarioDesc& scenario, const pedantjson::Document& doc
                std::format("the duration must be a positive, finite number of seconds, not {}",
                            scenario.duration));
     }
-    for (const auto [index, push] : std::views::enumerate(scenario.timeline)) {
-        const pedantjson::Pointer entry = root / "timeline" / static_cast<std::size_t>(index);
+    // Indexed loops rather than std::views::enumerate, which Apple's libc++ lacks.
+    for (std::size_t index = 0; index < scenario.timeline.size(); ++index) {
+        const auto& push = scenario.timeline[index];
+        const pedantjson::Pointer entry = root / "timeline" / index;
         if (push.part.empty()) {
             report(entry / "part", "the part pushed must be the name of a part, not empty");
         }
@@ -274,10 +276,11 @@ void check_meaning(const ScenarioDesc& scenario, const pedantjson::Document& doc
                                scenario.duration, push.time));
         }
     }
-    for (const auto [index, metric] : std::views::enumerate(scenario.metrics)) {
+    for (std::size_t index = 0; index < scenario.metrics.size(); ++index) {
+        const Metric metric = scenario.metrics[index];
         if (metric == Metric::max_speed_after_3s && duration_valid &&
             scenario.duration < settling_time) {
-            report(root / "metrics" / static_cast<std::size_t>(index),
+            report(root / "metrics" / index,
                    std::format(R"(the metric "{}" needs a duration of at least {} s, not {} s)",
                                metric_name(metric), settling_time, scenario.duration));
         }

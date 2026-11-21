@@ -1,5 +1,6 @@
-# Tests of the build itself: that the settings a preset turns on take hold. They belong to no target,
-# so they are named after the build.
+# Tests of the build itself: that the settings a preset turns on take hold, and that configuring
+# checks the compiler and the dependencies' licences. They belong to no target, so they are named
+# after the build.
 
 if("address" IN_LIST APLOMB_SANITIZERS)
     aplomb_add_program_test(build "AddressSanitizer stops a read past the end of a heap allocation"
@@ -24,6 +25,19 @@ if(NOT APLOMB_EXCEPTIONS)
         MATCHES "exception handling disabled|cannot use 'throw' with exceptions disabled"
     )
 endif()
+
+# Apple Clang's floor, which is the Apple Clang of an Xcode. Its versions don't follow LLVM's, and
+# Xcodes a year apart can share one, so CMake's version is compared with Apple's build number too.
+aplomb_add_script_test(build "configuring with an Apple Clang older than its floor stops, naming the floor"
+    SCRIPT compiler_floor.cmake
+    DEFINITIONS COMPILER_ID=AppleClang COMPILER_VERSION=21.0.0.21000123
+    EXPECTED_RESULT 1
+    STDERR_MATCHES "aplomb needs Apple Clang 21\\.0\\.0\\.21000401 \\(Xcode 27\\.2\\) or newer;.*Apple Clang 21\\.0\\.0\\.21000123\\."
+)
+aplomb_add_script_test(build "configuring with the Apple Clang at its floor goes on"
+    SCRIPT compiler_floor.cmake
+    DEFINITIONS COMPILER_ID=AppleClang COMPILER_VERSION=21.0.0.21000401
+)
 
 # The licence check's verdicts on licence expressions, against the allowlist.
 function(aplomb_add_license_verdict_test description expression expected)

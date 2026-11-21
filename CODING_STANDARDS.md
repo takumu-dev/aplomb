@@ -9,18 +9,29 @@ departs from them, it says so.
 ## Language and build
 
 - C++23, shipped as ordinary headers rather than C++20 modules, with no compiler extensions.
-- The supported compilers are GCC and Clang, with libstdc++, on Linux, and MSVC on Windows. Their
-  floors are GCC 16, Clang 23 and MSVC 14.52. The floors rise at each milestone and never fall, and
-  configuring with anything older stops with a message naming the floor.
+- The supported compilers are GCC and Clang, with libstdc++, on Linux, MSVC on Windows, and Apple
+  Clang, with libc++, on macOS. Their floors are GCC 16, Clang 23, MSVC 14.52 and the Apple Clang
+  of Xcode 27.2. Apple Clang's versions don't follow LLVM's, and Xcodes a year apart can share one,
+  so its floor is the version CMake reports, with Apple's build number: 21.0.0.21000401. The floors
+  rise at each milestone and never fall, and configuring with anything older stops with a message
+  naming the floor.
 - CMake 4.4 or newer. Every configuration the project builds is a preset in `CMakePresets.json`,
   with a workflow preset, so that a developer and CI build alike: `cmake --workflow --preset
   linux-gcc-debug` configures, builds and runs the tests. The presets find vcpkg through
   `VCPKG_ROOT`.
-- The debug presets build everything with AddressSanitizer and UndefinedBehaviorSanitizer, and
-  `linux-clang-release` builds the library with exceptions disabled (`APLOMB_EXCEPTIONS` off).
+- The presets are `linux-gcc-*`, `linux-clang-*`, `windows-msvc-*` and `macos-clang-*`, each in
+  `debug` and `release`. The Windows presets run in a developer command prompt for MSVC 14.52, such
+  as `vcvarsall.bat x64 -vcvars_ver=14.52` opens.
+- The debug presets build everything with AddressSanitizer and UndefinedBehaviorSanitizer, but for
+  `windows-msvc-debug`, and `linux-clang-release` and `macos-clang-release` build the library with
+  exceptions disabled (`APLOMB_EXCEPTIONS` off), which MSVC builds can't.
 - CI runs on CircleCI, from `.circleci/`. Its Linux jobs run in an image built from
   `.circleci/image/`, which holds the floor compilers: `linux-gcc-debug`, `linux-clang-release`,
   `linux-arm64-release` (the same preset on ARM64) and `lint`. Together they are the `ci` check.
+  The Windows and macOS jobs draw on the free plan's scarcer credits, so they stand apart from it,
+  and build with the floor toolsets on CircleCI's images: `windows-msvc-release` on every branch
+  but `develop` and `main`, `macos-clang-release` on `release/*` branches, and both on a pipeline
+  that the project's Monday schedule triggers.
 - The build only finds its dependencies with `find_package`, and never downloads anything, so a host
   can supply them through any package manager or none. aplomb's own builds take them from the vcpkg
   manifest, with test-only ports in its `tests` feature and the sandbox's in its `sandbox` feature.
@@ -36,8 +47,9 @@ departs from them, it says so.
 - Jolt comes from the overlay port in `ports/joltphysics/`, which builds it deterministic across
   platforms, in single precision, and pins its release. These options change Jolt's ABI, and Jolt's
   CMake package carries the definitions that match them, so whatever links `Jolt::Jolt` compiles
-  against exactly that build. Moving to another release of Jolt is a `build(deps)` commit of its
-  own.
+  against exactly that build. It also turns off Jolt's floating-point exceptions, which Jolt turns
+  on for MSVC alone, so that MSVC builds step as the others do. Moving to another release of Jolt
+  is a `build(deps)` commit of its own.
 - pedantjson comes from the overlay port in `ports/pedantjson/`, its own repository's port, until
   vcpkg's registry carries it. The port tracks pedantjson's releases, and moving to another is a
   `build(deps)` commit of its own too.
@@ -100,7 +112,8 @@ runs are compared step by step. Every scenario has a golden hash at each step ra
 state hash its run must end with, one to a file in `tests/golden/`.
 
 - Golden hashes are recorded on Linux x86-64 with `linux-clang-release`, and checked by the presets
-  that turn `APLOMB_GOLDEN_HASHES` on: `linux-clang-release`, on x86-64 and ARM64 alike.
+  that turn `APLOMB_GOLDEN_HASHES` on: `linux-clang-release`, on x86-64 and ARM64 alike,
+  `windows-msvc-release` and `macos-clang-release`.
 - Only `cmake --build --preset linux-clang-release --target golden-hashes` makes them, recording
   every scenario's afresh and removing those of scenarios that are gone. It writes nothing unless
   every scenario passes and records `state_hash_final`.
